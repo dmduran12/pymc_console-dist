@@ -1,1 +1,0 @@
-import{b as r}from"./recharts-CGff6_7g.js";function t(t,e,n=!0,s=!1){const a=r.useRef(t);r.useEffect(()=>{a.current=t},[t]),r.useEffect(()=>{if(!n)return;s||a.current();const r=setInterval(()=>{a.current()},e);return()=>clearInterval(r)},[e,n,s])}export{t as u};

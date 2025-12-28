@@ -1,0 +1,1 @@
+import{b as r}from"./recharts-bmHCCfxU.js";function e(e,t,n=!0,c=!1){const s=r.useRef(e);r.useEffect(()=>{s.current=e},[e]),r.useEffect(()=>{if(!n)return;c||s.current();const r=setInterval(()=>{s.current()},t);return()=>clearInterval(r)},[t,n,c])}export{e as u};
