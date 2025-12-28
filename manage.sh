@@ -2959,8 +2959,8 @@ install_backend_service() {
     fi
 }
 
-# GitHub repository for UI releases
-UI_REPO="dmduran12/pymc_console"
+# GitHub repository for UI releases (public distribution repo)
+UI_REPO="dmduran12/pymc_console-dist"
 UI_RELEASE_URL="https://github.com/${UI_REPO}/releases"
 
 # Download and install dashboard from GitHub Releases
