@@ -1,6 +1,6 @@
 # pyMC Console
 
-[![GitHub Release](https://img.shields.io/github/v/release/dmduran12/pymc_console)](https://github.com/dmduran12/pymc_console/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/dmduran12/pymc_console-dist)](https://github.com/dmduran12/pymc_console-dist/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A modern web dashboard for monitoring and managing your [MeshCore](https://meshcore.co.uk/) LoRa mesh repeater.
@@ -75,7 +75,7 @@ Built on [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) by [RightUp](
 
 ```bash
 # Clone this repository
-git clone https://github.com/dmduran12/pymc_console.git
+git clone https://github.com/dmduran12/pymc_console-dist.git pymc_console
 cd pymc_console
 
 # Run the installer (requires sudo)
@@ -121,15 +121,14 @@ After installation, run `sudo bash manage.sh` to access the management menu:
 
 ## Upgrading
 
-To update to the latest version:
+To update to the latest version, use the TUI menu:
 
 ```bash
 cd pymc_console
-git pull
-sudo bash manage.sh upgrade
+sudo bash manage.sh
 ```
 
-Or use the TUI menu: `sudo bash manage.sh` → **Upgrade**
+Select **Upgrade** → **Console UI only** (recommended) or **Full upgrade** if backend changes are needed.
 
 ## Configuration
 
@@ -269,24 +268,6 @@ Clicking a packet shows its route on a map with confidence indicators:
 - **Orange** — 25-49% confidence (medium certainty)
 - **Red** — 1-24% confidence (low certainty)
 - **Gray** — Unknown prefix (not in neighbor list)
-
-## Development
-
-See [WARP.md](WARP.md) for architecture details and [RELEASE.md](RELEASE.md) for the release process.
-
-```bash
-cd frontend
-npm install
-npm run dev        # Starts dev server at http://localhost:5173
-npm run typecheck  # Run TypeScript type checking
-npm run build      # Production build
-```
-
-To connect to a remote Pi during development, create `frontend/.env.local`:
-
-```env
-VITE_API_URL=http://<pi-ip>:8000
-```
 
 ## License
 
