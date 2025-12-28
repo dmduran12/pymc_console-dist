@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pyMC Console</title>
+    <meta name="description" content="LoRa Mesh Network Repeater Monitoring Dashboard" />
+    
+    <!-- Fonts: Inter (display) and JetBrains Mono (data) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    
+    <!-- Theme initialization - prevent flash of unstyled content -->
+    <script>
+      (function() {
+        try {
+          // Try new key first, fall back to legacy key for migration
+          var scheme = localStorage.getItem('pymc-color-scheme');
+          if (!scheme) {
+            // Migration: read legacy key and map to color scheme
+            var legacy = localStorage.getItem('pymc-background');
+            if (legacy && legacy !== 'default') {
+              scheme = legacy; // Legacy stored preset ID which matches scheme ID
+            }
+          }
+          // Apply theme if not default (default uses :root styles)
+          if (scheme && scheme !== 'default') {
+            document.documentElement.setAttribute('data-theme', scheme);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    
+    <style>
+      :root {
+        --font-display: 'Inter', system-ui, -apple-system, sans-serif;
+        --font-data: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-CylDUtFA.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/maplibre-gl-DsiI67my.js">
+    <link rel="modulepreload" crossorigin href="/assets/recharts-CGff6_7g.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CLg20r2M.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
