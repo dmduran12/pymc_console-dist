@@ -902,11 +902,10 @@ do_install() {
     
     # Apply patches to /opt/pymc_repeater (the installed location, not the clone)
     print_info "Patching installed files..."
-    patch_api_endpoints "$INSTALL_DIR"           # PATCH 1: Radio config API endpoint
+    # PATCH 1 & 5 removed - merged upstream in PR #36 (feat/identity branch)
     patch_logging_section "$INSTALL_DIR"         # PATCH 2: Ensure logging section exists
     patch_log_level_api "$INSTALL_DIR"           # PATCH 3: Log level toggle API
     patch_mesh_cli "$INSTALL_DIR"                # PATCH 4: MeshCore CLI parity
-    patch_stats_api "$INSTALL_DIR"               # PATCH 5: Extend stats API with MeshCore config
     patch_private_key_api "$INSTALL_DIR"         # PATCH 6: Private key get/set API
     
     # =========================================================================
@@ -2273,22 +2272,20 @@ run_upstream_installer() {
 }
 
 # ============================================================================
-# UPSTREAM PATCHES
+# PATCH REGISTRY
 # ============================================================================
-# These patches modify pyMC_Repeater to support pymc_console features.
-# They are applied during install/upgrade and should be converted to a
-# clean PR for https://github.com/rightup/pyMC_Repeater once stable.
+# Core patches that enhance pyMC_Repeater with pyMC Console features.
+# These patches are candidates for upstream PR submission.
 #
-# PATCH REGISTRY:
-# ---------------
-# 1. patch_api_endpoints (api_endpoints.py)
-#    - Adds POST /api/update_radio_config endpoint
-#    - Allows web UI to update radio settings and save to config.yaml
-#    - PR Status: Pending
+# REMOVED (Merged Upstream in PR #36 - feat/identity branch):
+# - patch_api_endpoints - /api/update_radio_config endpoint
+# - patch_stats_api - Extended /api/stats with max_flood_hops, advert_interval_minutes, rx_delay_base
+#
+# Remaining Patches:
 #
 # 2. patch_logging_section (main.py)
-#    - Ensures config['logging'] exists before setting level from --log-level
-#    - Prevents KeyError when config.yaml lacks 'logging' section (affects DEBUG arg)
+#    - Ensures config['logging'] exists before setting level from --log-level arg
+#    - Fixes KeyError when service starts with --log-level DEBUG
 #    - PR Status: Pending
 #
 # 3. patch_log_level_api (api_endpoints.py)
@@ -2302,10 +2299,11 @@ run_upstream_installer() {
 #    - Implemented via external Python patch script (patches/mesh_cli_enhancements.py)
 #    - PR Status: Pending
 #
-# 5. patch_stats_api (engine.py)
-#    - Extends /api/stats config with MeshCore CLI-accessible values
-#    - Adds: max_flood_hops, advert_interval_minutes, rx_delay_base to config.repeater
-#    - Enables Terminal `get flood.max`, `get advert.interval`, `get rxdelay` commands
+# 6. patch_private_key_api (mesh_cli.py)
+#    - Adds get/set prv.key for private key management via Terminal
+#    - Stores key in config['mesh']['identity_key']
+#    - PR Status: Pending
+#
 #    - PR Status: Pending
 #
 # NOTE: patch_static_file_serving was removed in v0.4.0 (SPA migration).
@@ -2324,286 +2322,20 @@ run_upstream_installer() {
 # ============================================================================
 
 # ------------------------------------------------------------------------------
-# PATCH 1: Radio Configuration API Endpoint
+# PATCH 1: Radio Configuration API Endpoint [REMOVED - MERGED UPSTREAM PR #36]
 # ------------------------------------------------------------------------------
-# File: repeater/web/api_endpoints.py
-# Purpose: Allow web UI to update radio settings without SSH/CLI
-# Changes:
-#   - Add POST /api/update_radio_config endpoint
-#   - Accepts: frequency_mhz, bandwidth_khz, spreading_factor, coding_rate, tx_power
-#   - Validates input ranges (SF 5-12, CR 5-8, power 2-22 dBm)
-#   - Saves to config.yaml via existing _save_config_to_file()
-#   - Returns restart_required: true (live radio update not yet supported)
+# This patch was merged upstream in PR #36 to the feat/identity branch.
+# The patch is preserved below (commented out) for reference and for users
+# who may still be on main/dev branches before the PR is merged there.
 # ------------------------------------------------------------------------------
+
+# Patch removed - see PR #36: https://github.com/rightup/pyMC_Repeater/pull/36
 patch_api_endpoints() {
-    local target_dir="${1:-$CLONE_DIR}"
-    local api_file="$target_dir/repeater/web/api_endpoints.py"
-    
-    if [ ! -f "$api_file" ]; then
-        print_warning "api_endpoints.py not found, skipping patch"
-        return 0
-    fi
-    
-    # Patch version - increment when patch content changes
-    local PATCH_VERSION="5"  # v1: radio only, v2: +delay settings, v3: TX power 30dBm, v4: +repeater config, v5: live updates
-    
-    # Check if current version is already applied
-    if grep -q "PYMC_CONSOLE_PATCH_V${PATCH_VERSION}" "$api_file" 2>/dev/null; then
-        print_info "API endpoints patch v${PATCH_VERSION} already applied"
-        return 0
-    fi
-    
-    # Remove any existing patch (versioned or legacy) before applying new one
-    if grep -q 'def update_radio_config' "$api_file" 2>/dev/null; then
-        local old_ver="legacy"
-        if grep -q 'PYMC_CONSOLE_PATCH_V' "$api_file" 2>/dev/null; then
-            old_ver=$(grep -o 'PYMC_CONSOLE_PATCH_V[0-9]*' "$api_file" | head -1 | sed 's/PYMC_CONSOLE_PATCH_V//')
-        fi
-        print_info "Upgrading API patch v${old_ver} → v${PATCH_VERSION}..."
-        python3 << REMOVEPATCH
-import re
-with open("$api_file", 'r') as f:
-    content = f.read()
-# Remove update_radio_config method entirely (handles both versioned and legacy)
-pattern = r'\n(    # PYMC_CONSOLE_PATCH[^\n]*\n)?    @cherrypy\.expose\n    @cherrypy\.tools\.json_out\(\)\n    @cherrypy\.tools\.json_in\(\)\n    def update_radio_config\(self\):.*?return self\._error\(str\(e\)\)'
-content = re.sub(pattern, '', content, flags=re.DOTALL)
-with open("$api_file", 'w') as f:
-    f.write(content)
-print("Removed old patch")
-REMOVEPATCH
-    fi
-    
-    # Use Python to add the endpoint (note: no quotes around PATCHEOF to allow variable expansion)
-    python3 << PATCHEOF
-import re
-
-api_file = "$api_file"
-
-with open(api_file, 'r') as f:
-    content = f.read()
-
-# Add update_radio_config endpoint after save_cad_settings
-update_radio_config_code = '''
-
-    # PYMC_CONSOLE_PATCH_V5 - Radio, delay, and repeater config API with live updates
-    @cherrypy.expose
-    @cherrypy.tools.json_out()
-    @cherrypy.tools.json_in()
-    def update_radio_config(self):
-        """Update radio configuration and save to config.yaml
-        
-        POST /api/update_radio_config
-        Body: {
-            "frequency_mhz": 906.875,
-            "bandwidth_khz": 250,
-            "spreading_factor": 10,
-            "coding_rate": 5,
-            "tx_power": 22
-        }
-        
-        Returns: {"success": true, "data": {"applied": [...], "persisted": true, "restart_required": true}}
-        """
-        try:
-            self._require_post()
-            data = cherrypy.request.json or {}
-            
-            if not data:
-                return self._error("No configuration provided")
-            
-            applied = []
-            
-            # Ensure radio config section exists
-            if "radio" not in self.config:
-                self.config["radio"] = {}
-            
-            # Update frequency (convert MHz to Hz for storage)
-            if "frequency_mhz" in data:
-                freq_hz = int(float(data["frequency_mhz"]) * 1_000_000)
-                self.config["radio"]["frequency"] = freq_hz
-                applied.append(f"frequency={data['frequency_mhz']}MHz")
-            
-            # Update bandwidth (convert kHz to Hz for storage)
-            if "bandwidth_khz" in data:
-                bw_hz = int(float(data["bandwidth_khz"]) * 1000)
-                self.config["radio"]["bandwidth"] = bw_hz
-                applied.append(f"bandwidth={data['bandwidth_khz']}kHz")
-            
-            # Update spreading factor
-            if "spreading_factor" in data:
-                sf = int(data["spreading_factor"])
-                if sf < 5 or sf > 12:
-                    return self._error("Spreading factor must be 5-12")
-                self.config["radio"]["spreading_factor"] = sf
-                applied.append(f"SF={sf}")
-            
-            # Update coding rate
-            if "coding_rate" in data:
-                cr = int(data["coding_rate"])
-                if cr < 5 or cr > 8:
-                    return self._error("Coding rate must be 5-8 (4/5 to 4/8)")
-                self.config["radio"]["coding_rate"] = cr
-                applied.append(f"CR=4/{cr}")
-            
-            # Update TX power (up to 30 dBm for high-power radios like E22-900M30S)
-            if "tx_power" in data:
-                power = int(data["tx_power"])
-                if power < 2 or power > 30:
-                    return self._error("TX power must be 2-30 dBm")
-                self.config["radio"]["tx_power"] = power
-                applied.append(f"power={power}dBm")
-            
-            # Ensure delays config section exists
-            if "delays" not in self.config:
-                self.config["delays"] = {}
-            
-            # Update TX delay factor (af/txdelay)
-            if "tx_delay_factor" in data:
-                tdf = float(data["tx_delay_factor"])
-                if tdf < 0.0 or tdf > 5.0:
-                    return self._error("TX delay factor must be 0.0-5.0")
-                self.config["delays"]["tx_delay_factor"] = tdf
-                applied.append(f"txdelay={tdf}")
-            
-            # Update direct TX delay factor
-            if "direct_tx_delay_factor" in data:
-                dtdf = float(data["direct_tx_delay_factor"])
-                if dtdf < 0.0 or dtdf > 5.0:
-                    return self._error("Direct TX delay factor must be 0.0-5.0")
-                self.config["delays"]["direct_tx_delay_factor"] = dtdf
-                applied.append(f"direct.txdelay={dtdf}")
-            
-            # Update RX delay base
-            if "rx_delay_base" in data:
-                rxd = float(data["rx_delay_base"])
-                if rxd < 0.0:
-                    return self._error("RX delay cannot be negative")
-                self.config["delays"]["rx_delay_base"] = rxd
-                applied.append(f"rxdelay={rxd}")
-            
-            # Ensure repeater config section exists
-            if "repeater" not in self.config:
-                self.config["repeater"] = {}
-            
-            # Update node name
-            if "node_name" in data:
-                name = str(data["node_name"]).strip()
-                if not name:
-                    return self._error("Node name cannot be empty")
-                self.config["repeater"]["node_name"] = name
-                applied.append(f"name={name}")
-            
-            # Update latitude
-            if "latitude" in data:
-                lat = float(data["latitude"])
-                if lat < -90 or lat > 90:
-                    return self._error("Latitude must be -90 to 90")
-                self.config["repeater"]["latitude"] = lat
-                applied.append(f"lat={lat}")
-            
-            # Update longitude
-            if "longitude" in data:
-                lon = float(data["longitude"])
-                if lon < -180 or lon > 180:
-                    return self._error("Longitude must be -180 to 180")
-                self.config["repeater"]["longitude"] = lon
-                applied.append(f"lon={lon}")
-            
-            # Update max flood hops
-            if "max_flood_hops" in data:
-                hops = int(data["max_flood_hops"])
-                if hops < 0 or hops > 64:
-                    return self._error("Max flood hops must be 0-64")
-                self.config["repeater"]["max_flood_hops"] = hops
-                applied.append(f"flood.max={hops}")
-            
-            # Update flood advert interval (hours)
-            if "flood_advert_interval_hours" in data:
-                hours = int(data["flood_advert_interval_hours"])
-                if hours != 0 and (hours < 3 or hours > 48):
-                    return self._error("Flood advert interval must be 0 (off) or 3-48 hours")
-                self.config["repeater"]["send_advert_interval_hours"] = hours
-                applied.append(f"flood.advert.interval={hours}h")
-            
-            # Update local advert interval (minutes)
-            if "advert_interval_minutes" in data:
-                mins = int(data["advert_interval_minutes"])
-                if mins != 0 and (mins < 1 or mins > 10080):
-                    return self._error("Advert interval must be 0 (off) or 1-10080 minutes")
-                self.config["repeater"]["advert_interval_minutes"] = mins
-                applied.append(f"advert.interval={mins}m")
-            
-            if not applied:
-                return self._error("No valid settings provided")
-            
-            # Save to config file
-            config_path = getattr(self, '_config_path', '/etc/pymc_repeater/config.yaml')
-            self._save_config_to_file(config_path)
-            
-            # Live update: Also update daemon's in-memory config for immediate effect
-            live_updated = False
-            if self.daemon_instance and hasattr(self.daemon_instance, 'config'):
-                try:
-                    daemon_config = self.daemon_instance.config
-                    
-                    # Update repeater section in daemon config
-                    if 'repeater' not in daemon_config:
-                        daemon_config['repeater'] = {}
-                    for key in ['node_name', 'latitude', 'longitude', 'max_flood_hops', 
-                                'advert_interval_minutes', 'send_advert_interval_hours']:
-                        if key in self.config.get('repeater', {}):
-                            daemon_config['repeater'][key] = self.config['repeater'][key]
-                    
-                    # Update delays section in daemon config
-                    if 'delays' not in daemon_config:
-                        daemon_config['delays'] = {}
-                    for key in ['tx_delay_factor', 'direct_tx_delay_factor', 'rx_delay_base']:
-                        if key in self.config.get('delays', {}):
-                            daemon_config['delays'][key] = self.config['delays'][key]
-                    
-                    live_updated = True
-                    logger.info("Live updated daemon config")
-                except Exception as e:
-                    logger.warning(f"Could not live update daemon config: {e}")
-            
-            logger.info(f"Radio config updated: {', '.join(applied)}")
-            
-            return self._success({
-                "applied": applied,
-                "persisted": True,
-                "live_update": live_updated,
-                "restart_required": not live_updated,
-                "message": "Settings applied immediately." if live_updated else "Settings saved. Restart service to apply changes."
-            })
-            
-        except cherrypy.HTTPError:
-            raise
-        except Exception as e:
-            logger.error(f"Error updating radio config: {e}")
-            return self._error(str(e))
-'''
-
-# Find the save_cad_settings method and insert after it
-# Look for the end of save_cad_settings (the except block)
-pattern = r'(    def save_cad_settings\(self\):.*?return self\._error\(e\))'
-match = re.search(pattern, content, re.DOTALL)
-
-if match:
-    insert_pos = match.end()
-    content = content[:insert_pos] + update_radio_config_code + content[insert_pos:]
-    
-    with open(api_file, 'w') as f:
-        f.write(content)
-    print("Patched api_endpoints.py with update_radio_config")
-else:
-    print("Could not find insertion point for update_radio_config")
-PATCHEOF
-    
-    # Verify patch was applied
-    if grep -q 'def update_radio_config' "$api_file" 2>/dev/null; then
-        print_success "Patched api_endpoints.py with update_radio_config"
-    else
-        print_warning "API patch may not have applied correctly"
-    fi
+    # DISABLED: This patch was merged upstream in PR #36 (feat/identity branch)
+    # See: https://github.com/rightup/pyMC_Repeater/pull/36
+    # The /api/update_radio_config endpoint is now part of upstream pyMC_Repeater
+    print_info "API endpoints patch skipped (merged upstream in PR #36)"
+    return 0
 }
 
 # ------------------------------------------------------------------------------
@@ -2847,46 +2579,18 @@ patch_mesh_cli() {
 }
 
 # ------------------------------------------------------------------------------
-# PATCH 5: Stats API Extension (engine.py)
+# PATCH 5: Stats API Extension [REMOVED - MERGED UPSTREAM PR #36]
 # ------------------------------------------------------------------------------
-# File: repeater/engine.py
-# Purpose: Expose additional config values in /api/stats for Terminal CLI
-# Changes:
-#   - Add max_flood_hops to config.repeater (for 'get flood.max')
-#   - Add advert_interval_minutes to config.repeater (for 'get advert.interval')
-#   - Add rx_delay_base to config.delays (for 'get rxdelay')
-# PR Status: Pending upstream submission
+# This patch was merged upstream in PR #36 to the feat/identity branch.
+# The /api/stats endpoint now includes max_flood_hops, advert_interval_minutes,
+# and rx_delay_base in the response.
 # ------------------------------------------------------------------------------
+
+# Patch removed - see PR #36: https://github.com/rightup/pyMC_Repeater/pull/36
 patch_stats_api() {
-    local target_dir="${1:-$CLONE_DIR}"
-    local engine_file="$target_dir/repeater/engine.py"
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local patch_script="$script_dir/patches/stats_api_extension.py"
-    
-    if [ ! -f "$engine_file" ]; then
-        print_warning "engine.py not found, skipping stats API patch"
-        return 0
-    fi
-    
-    # Check if already patched
-    if grep -q 'PYMC_CONSOLE_STATS_PATCH' "$engine_file" 2>/dev/null; then
-        print_info "Stats API patch already applied"
-        return 0
-    fi
-    
-    # Check if patch script exists
-    if [ ! -f "$patch_script" ]; then
-        print_warning "Patch script not found: $patch_script"
-        print_info "Skipping stats API extension"
-        return 0
-    fi
-    
-    # Run the Python patch script
-    if python3 "$patch_script" "$engine_file" 2>/dev/null; then
-        print_success "Applied stats API extension patch"
-    else
-        print_warning "Stats API patch may not have applied correctly"
-    fi
+    # Patch disabled - merged upstream in PR #36 (feat/identity branch)
+    print_info "Stats API patch skipped (merged upstream in PR #36)"
+    return 0
 }
 
 # ------------------------------------------------------------------------------
