@@ -1,6 +1,6 @@
 {
   "name": "pymc_console",
-  "version": "0.7.16",
+  "version": "0.7.17",
   "description": "Vite + React Dashboard for pyMC_Repeater",
   "private": true,
   "type": "module",
@@ -14,6 +14,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.2.5",
+    "@deck.gl/layers": "^9.2.5",
+    "@deck.gl/mapbox": "^9.2.5",
     "@types/leaflet": "^1.9.21",
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
