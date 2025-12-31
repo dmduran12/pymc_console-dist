@@ -79,6 +79,7 @@ The MeshCore Python ecosystem has three components:
 - **Visual identity** — Yellow house icon for local node, indigo rings for neighbors
 - **Path health panel** — Health scores, weakest links, and latency estimates for observed routes
 - **Mobile node detection** — Identifies volatile nodes that appear/disappear frequently
+- **Wardriving coverage heatmap** — Overlay coverage data from external wardriving servers (e.g., coverage.wcmesh.com) as a GPU-accelerated heatmap showing signal coverage across your area
 
 ![Topology Map](docs/images/topology.png)
 
