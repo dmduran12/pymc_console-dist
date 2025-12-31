@@ -7,6 +7,45 @@ A modern web dashboard for monitoring and managing your [MeshCore](https://meshc
 
 Built on [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) by [RightUp](https://github.com/rightup), pyMC Console provides real-time visibility into your mesh network with an intuitive, feature-rich interface.
 
+## How It All Fits Together
+
+The MeshCore Python ecosystem has three components:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      pyMC Console                           │
+│            (this repo - web dashboard UI)                   │
+│                                                             │
+│  • React dashboard served on port 8000                      │
+│  • Visualizes packets, topology, stats                      │
+│  • manage.sh installer handles everything                   │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ uses API from
+┌─────────────────────▼───────────────────────────────────────┐
+│                    pyMC_Repeater                            │
+│           (RightUp's repeater daemon)                       │
+│                                                             │
+│  • Python daemon that runs the repeater                     │
+│  • Provides REST API on port 8000                           │
+│  • Handles packet forwarding, logging, config               │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ built on
+┌─────────────────────▼───────────────────────────────────────┐
+│                      pyMC_core                              │
+│             (RightUp's protocol library)                    │
+│                                                             │
+│  • Low-level MeshCore protocol implementation               │
+│  • Radio drivers (SX1262, SX1276)                           │
+│  • Packet encoding/decoding                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key points:**
+- **Console does NOT replace Repeater** — they work together
+- Console's `manage.sh` installs both Repeater and Console side-by-side
+- Console provides the web UI; Repeater provides the backend API and radio control
+- You can upgrade Console independently without touching Repeater/Core
+
 ## Features
 
 ### Dashboard
@@ -83,10 +122,19 @@ sudo bash manage.sh install
 ```
 
 The installer will:
-1. Install all dependencies
-2. Set up [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater)
-3. Deploy the web dashboard
-4. Configure the systemd service
+1. Install all system dependencies (Python, pip, etc.)
+2. Clone and install [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) as a sibling directory
+3. Install [pyMC_core](https://github.com/rightup/pyMC_core) (the protocol library)
+4. Deploy the Console web dashboard
+5. Configure and start the systemd service
+
+**After installation, your directory structure looks like:**
+```
+~/pymc_console/       ← Console (this repo)
+~/pyMC_Repeater/      ← Repeater daemon (cloned by installer)
+/opt/pymc_repeater/   ← Installed repeater files
+/opt/pymc_console/    ← Installed console files
+```
 
 Once complete, access your dashboard at `http://<your-pi-ip>:8000`
 
@@ -128,7 +176,11 @@ cd pymc_console
 sudo bash manage.sh
 ```
 
-Select **Upgrade** → **Console UI only** (recommended) or **Full upgrade** if backend changes are needed.
+Select **Upgrade** and choose:
+- **Console UI only** — Updates just the web dashboard (recommended, quick)
+- **Full upgrade** — Updates Console + pulls latest pyMC_Repeater/pyMC_core
+
+**Note:** You can safely upgrade Console without affecting your Repeater installation. This is useful when you want new dashboard features but your repeater is running stable.
 
 ## Configuration
 
