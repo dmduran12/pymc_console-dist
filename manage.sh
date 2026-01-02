@@ -1038,11 +1038,11 @@ do_upgrade() {
     local current_core_ver=$(get_core_version)
     local current_console_ver=$(get_console_version)
     
-    # Get current branch from clone directory or default to dev
-    local current_branch="dev"
+    # Get current branch from clone directory or default to feat/dmg
+    local current_branch="$DEFAULT_BRANCH"
     if [ -d "$CLONE_DIR/.git" ]; then
         cd "$CLONE_DIR" 2>/dev/null || true
-        current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "dev")
+        current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$DEFAULT_BRANCH")
     fi
     
     # Show current versions and upgrade type selection
@@ -1232,7 +1232,7 @@ Continue?"; then
     else
         cd "$CLONE_DIR"
         
-        run_with_spinner "Fetching updates" "git fetch origin" || {
+        run_with_spinner "Fetching updates" "git fetch origin --prune" || {
             print_error "Failed to fetch updates"
             return 1
         }
@@ -1241,13 +1241,25 @@ Continue?"; then
         git reset --hard HEAD 2>/dev/null || true
         git clean -fd 2>/dev/null || true
         
-        git checkout "$branch" 2>/dev/null || git checkout -b "$branch" "origin/$branch" 2>/dev/null
+        # Switch to the target branch
+        # First try to checkout existing branch, if that fails create tracking branch
+        if ! git checkout "$branch" 2>/dev/null; then
+            # Branch doesn't exist locally, create it tracking origin
+            if git checkout -b "$branch" "origin/$branch" 2>/dev/null; then
+                print_success "Switched to new branch: $branch"
+            else
+                print_error "Branch '$branch' not found on remote"
+                print_info "Available branches: $(git branch -r | grep -v HEAD | sed 's/origin\///' | tr '\n' ' ')"
+                return 1
+            fi
+        fi
         
-        run_with_spinner "Pulling latest changes" "git pull origin $branch" || {
+        # Pull latest changes (use reset to handle any divergence)
+        run_with_spinner "Pulling latest changes" "git reset --hard origin/$branch" || {
             print_error "Failed to pull branch $branch"
             return 1
         }
-        print_success "Repository updated"
+        print_success "Repository updated to $branch"
     fi
     
     # Show verified git info so user can confirm what was pulled
