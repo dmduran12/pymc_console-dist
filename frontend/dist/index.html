@@ -38,60 +38,12 @@
         --font-data: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-Do1mKT1P.js"></script>
+    <script type="module" crossorigin src="/assets/index-DSbGyUVi.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/maplibre-gl-CFO9X1Ek.js">
     <link rel="modulepreload" crossorigin href="/assets/recharts-bmHCCfxU.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-ArgmoVa-.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-C8csr2Gr.css">
   </head>
   <body>
-    <!-- SVG Glass Distortion Filter for Liquid Glass Effect
-         Creates subtle refraction/magnification behind glass elements.
-         Note: Only works in Chromium browsers (Chrome, Edge, Brave).
-         Safari/Firefox will gracefully degrade to blur-only glass. -->
-    <svg class="sr-only" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
-      <defs>
-        <!-- Subtle glass refraction - displacement map creates edge distortion -->
-        <filter id="glass-refraction" x="-10%" y="-10%" width="120%" height="120%">
-          <!-- Generate noise pattern for displacement -->
-          <feTurbulence 
-            type="fractalNoise" 
-            baseFrequency="0.015 0.015" 
-            numOctaves="2" 
-            seed="5" 
-            result="noise"
-          />
-          <!-- Apply displacement to backdrop - subtle warping effect -->
-          <feDisplacementMap 
-            in="SourceGraphic" 
-            in2="noise" 
-            scale="6" 
-            xChannelSelector="R" 
-            yChannelSelector="G" 
-            result="displaced"
-          />
-        </filter>
-        
-        <!-- Stronger refraction for larger glass surfaces -->
-        <filter id="glass-refraction-strong" x="-10%" y="-10%" width="120%" height="120%">
-          <feTurbulence 
-            type="fractalNoise" 
-            baseFrequency="0.012 0.012" 
-            numOctaves="2" 
-            seed="5" 
-            result="noise"
-          />
-          <feDisplacementMap 
-            in="SourceGraphic" 
-            in2="noise" 
-            scale="10" 
-            xChannelSelector="R" 
-            yChannelSelector="G" 
-            result="displaced"
-          />
-        </filter>
-      </defs>
-    </svg>
-    
     <div id="root"></div>
   </body>
 </html>
