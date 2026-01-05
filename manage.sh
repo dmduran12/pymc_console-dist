@@ -585,7 +585,8 @@ print_completion() {
     echo ""
     
     echo -e "${BOLD}Access your dashboard:${NC}"
-    echo -e "  ${ARROW} Dashboard: ${CYAN}http://$ip_address:8000/${NC}"
+    echo -e "  ${ARROW} Dashboard: ${CYAN}https://$ip_address:8000/${NC}"
+    echo -e "  ${DIM}(Self-signed cert - browser will show warning)${NC}"
     echo -e "  ${DIM}(API endpoints also available at /api/*)${NC}"
     echo ""
 }
@@ -909,6 +910,7 @@ do_install() {
     patch_log_level_api "$INSTALL_DIR"           # PATCH 3: Log level toggle API
     patch_mesh_cli "$INSTALL_DIR"                # PATCH 4: MeshCore CLI parity
     patch_private_key_api "$INSTALL_DIR"         # PATCH 6: Private key get/set API
+    patch_ssl_support "$INSTALL_DIR"             # PATCH 7: SSL/HTTPS support
     
     # =========================================================================
     # Step 5: Install dashboard and console extras
@@ -937,6 +939,10 @@ do_install() {
     
     # Fix permissions for console directory
     chown -R "$SERVICE_USER:$SERVICE_USER" "$CONSOLE_DIR" 2>/dev/null || true
+    
+    # Setup HTTPS (generate self-signed cert and configure)
+    print_info "Setting up HTTPS..."
+    setup_https
     
     # =========================================================================
     # Step 6: Finalize installation
@@ -1204,7 +1210,8 @@ Continue?"; then
     echo -e "  ${CHECK} pyMC Console:  ${DIM}${current_console_ver}${NC} → ${CYAN}${new_console_ver}${NC}"
     echo ""
     echo -e "  ${CHECK} Configuration preserved"
-    echo -e "  ${CHECK} Dashboard: ${CYAN}http://$ip_address:8000${NC}"
+    echo -e "  ${CHECK} Dashboard: ${CYAN}https://$ip_address:8000${NC}"
+    echo -e "  ${DIM}(Self-signed cert - browser will show warning)${NC}"
         echo ""
         return 0
     fi
@@ -1297,6 +1304,7 @@ Continue?"; then
     patch_mesh_cli "$INSTALL_DIR"                # PATCH 4: MeshCore CLI parity
     patch_stats_api "$INSTALL_DIR"               # PATCH 5: Extend stats API with MeshCore config
     patch_private_key_api "$INSTALL_DIR"         # PATCH 6: Private key get/set API
+    patch_ssl_support "$INSTALL_DIR"             # PATCH 7: SSL/HTTPS support
 
     # Ensure --log-level DEBUG
     if [ -f /etc/systemd/system/pymc-repeater.service ]; then
@@ -1312,6 +1320,10 @@ Continue?"; then
     install_static_frontend || {
         print_warning "Dashboard update failed - service will continue with existing UI"
     }
+    
+    # Setup HTTPS (generate self-signed cert if missing, configure)
+    print_info "Setting up HTTPS..."
+    setup_https
     
     # Step 5: Restart service with patches
     ((step_num++)) || true
@@ -1346,7 +1358,8 @@ Continue?"; then
     echo -e "  ${CHECK} pyMC Console:  ${DIM}${current_console_ver}${NC} → ${CYAN}${new_console_ver}${NC}"
     echo ""
     echo -e "  ${CHECK} Configuration preserved"
-    echo -e "  ${CHECK} Dashboard: ${CYAN}http://$ip_address:8000${NC}"
+    echo -e "  ${CHECK} Dashboard: ${CYAN}https://$ip_address:8000${NC}"
+    echo -e "  ${DIM}(Self-signed cert - browser will show warning)${NC}"
     echo ""
 }
 
@@ -2320,6 +2333,13 @@ run_upstream_installer() {
 #    - Stores key in config['mesh']['identity_key']
 #    - PR Status: Pending
 #
+# 7. patch_ssl_support (http_server.py)
+#    - Enables HTTPS via CherryPy's built-in SSL adapter
+#    - Reads ssl_certificate and ssl_private_key from config.yaml web section
+#    - Auto-generates self-signed cert during install/upgrade (see setup_https)
+#    - Falls back to HTTP if certs not configured
+#    - PR Status: Pending
+#
 # NOTE: patch_static_file_serving was removed
 # Upstream's default() method already returns index.html for all unknown routes,
 # which is exactly what a true SPA needs. React Router handles client-side routing.
@@ -2647,6 +2667,189 @@ patch_private_key_api() {
         print_success "Applied private key API patch"
     else
         print_warning "Private key API patch may not have applied correctly"
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# SSL Certificate Generation
+# ------------------------------------------------------------------------------
+# Generates self-signed certificate for HTTPS support.
+# Called during install/upgrade to enable HTTPS automatically.
+# ------------------------------------------------------------------------------
+SSL_DIR="$CONFIG_DIR/ssl"
+SSL_CERT="$SSL_DIR/cert.pem"
+SSL_KEY="$SSL_DIR/key.pem"
+
+generate_ssl_cert() {
+    # Skip if certs already exist
+    if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
+        print_info "SSL certificates already exist"
+        return 0
+    fi
+    
+    # Create SSL directory
+    mkdir -p "$SSL_DIR"
+    
+    # Get hostname for certificate CN
+    local hostname=$(hostname 2>/dev/null || echo "pymc-repeater")
+    local ip_address=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+    
+    # Generate self-signed certificate (valid for 10 years)
+    if command -v openssl &> /dev/null; then
+        openssl req -x509 -newkey rsa:2048 \
+            -keyout "$SSL_KEY" \
+            -out "$SSL_CERT" \
+            -days 3650 \
+            -nodes \
+            -subj "/CN=$hostname/O=pyMC Console/C=US" \
+            -addext "subjectAltName=DNS:$hostname,DNS:localhost,IP:$ip_address,IP:127.0.0.1" \
+            2>/dev/null
+        
+        if [ $? -eq 0 ]; then
+            # Set permissions
+            chmod 600 "$SSL_KEY"
+            chmod 644 "$SSL_CERT"
+            chown -R "$SERVICE_USER:$SERVICE_USER" "$SSL_DIR" 2>/dev/null || true
+            
+            print_success "Generated SSL certificate for $hostname"
+            return 0
+        fi
+    fi
+    
+    print_warning "Could not generate SSL certificate (openssl not available)"
+    return 1
+}
+
+configure_ssl_in_config() {
+    local config_file="$CONFIG_DIR/config.yaml"
+    
+    if [ ! -f "$config_file" ]; then
+        return 1
+    fi
+    
+    # Only configure if certs exist
+    if [ ! -f "$SSL_CERT" ] || [ ! -f "$SSL_KEY" ]; then
+        return 1
+    fi
+    
+    # Add SSL config using yq
+    if command -v yq &> /dev/null; then
+        # Ensure web section exists
+        if ! yq eval '.web' "$config_file" 2>/dev/null | grep -qv "null"; then
+            yq -i '.web = {}' "$config_file" 2>/dev/null || true
+        fi
+        
+        yq -i ".web.ssl_certificate = \"$SSL_CERT\"" "$config_file" 2>/dev/null || true
+        yq -i ".web.ssl_private_key = \"$SSL_KEY\"" "$config_file" 2>/dev/null || true
+        
+        print_success "Configured HTTPS in config.yaml"
+        return 0
+    fi
+    
+    return 1
+}
+
+setup_https() {
+    # Generate cert if needed, then configure
+    generate_ssl_cert
+    configure_ssl_in_config
+}
+
+# ------------------------------------------------------------------------------
+# PATCH 7: SSL/HTTPS Support (http_server.py)
+# ------------------------------------------------------------------------------
+# File: repeater/web/http_server.py
+# Purpose: Enable HTTPS via CherryPy's built-in SSL adapter
+# Config:
+#   web:
+#     ssl_certificate: /path/to/cert.pem
+#     ssl_private_key: /path/to/key.pem
+# When both paths are set, CherryPy will serve HTTPS on the configured port.
+# PR Status: Pending upstream submission
+# ------------------------------------------------------------------------------
+patch_ssl_support() {
+    local target_dir="${1:-$CLONE_DIR}"
+    local http_file="$target_dir/repeater/web/http_server.py"
+    
+    if [ ! -f "$http_file" ]; then
+        print_warning "http_server.py not found, skipping SSL patch"
+        return 0
+    fi
+    
+    # Check if already patched
+    if grep -q 'ssl_certificate' "$http_file" 2>/dev/null; then
+        print_info "SSL support already patched"
+        return 0
+    fi
+    
+    # Use Python to patch the file
+    python3 - "$http_file" << 'PATCHEOF'
+import sys
+
+http_file = sys.argv[1]
+
+with open(http_file, 'r') as f:
+    content = f.read()
+
+# Find the cherrypy.config.update block and add SSL config
+# We need to add SSL settings before server.socket_host
+
+old_config = '''            cherrypy.config.update(
+                {
+                    "server.socket_host": self.host,
+                    "server.socket_port": self.port,'''
+
+new_config = '''            # SSL/HTTPS Configuration (pymc_console patch)
+            ssl_cert = self.config.get("web", {}).get("ssl_certificate", "")
+            ssl_key = self.config.get("web", {}).get("ssl_private_key", "")
+            
+            ssl_config = {}
+            if ssl_cert and ssl_key:
+                import os
+                if os.path.isfile(ssl_cert) and os.path.isfile(ssl_key):
+                    ssl_config = {
+                        "server.ssl_module": "builtin",
+                        "server.ssl_certificate": ssl_cert,
+                        "server.ssl_private_key": ssl_key,
+                    }
+                    logger.info(f"SSL enabled with certificate: {ssl_cert}")
+                else:
+                    logger.warning(f"SSL certificate or key not found, running HTTP only")
+            
+            cherrypy.config.update(
+                {
+                    **ssl_config,
+                    "server.socket_host": self.host,
+                    "server.socket_port": self.port,'''
+
+if old_config in content:
+    content = content.replace(old_config, new_config)
+else:
+    print("Could not find config block to patch")
+    sys.exit(1)
+
+# Also update the log message to show https:// when SSL is enabled
+old_log = '''            server_url = "http://{}:{}".format(self.host, self.port)
+            logger.info(f"HTTP stats server started on {server_url}")'''
+
+new_log = '''            protocol = "https" if ssl_config else "http"
+            server_url = "{}://{}:{}".format(protocol, self.host, self.port)
+            logger.info(f"{protocol.upper()} stats server started on {server_url}")'''
+
+if old_log in content:
+    content = content.replace(old_log, new_log)
+
+with open(http_file, 'w') as f:
+    f.write(content)
+
+print("Patched http_server.py with SSL support")
+PATCHEOF
+    
+    # Verify patch was applied
+    if grep -q 'ssl_certificate' "$http_file" 2>/dev/null; then
+        print_success "Patched http_server.py with SSL support"
+    else
+        print_warning "SSL patch may not have applied correctly"
     fi
 }
 
