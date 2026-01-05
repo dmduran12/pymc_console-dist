@@ -941,7 +941,6 @@ do_install() {
     chown -R "$SERVICE_USER:$SERVICE_USER" "$CONSOLE_DIR" 2>/dev/null || true
     
     # Setup HTTPS (generate self-signed cert and configure)
-    print_info "Setting up HTTPS..."
     setup_https
     
     # =========================================================================
@@ -1322,7 +1321,6 @@ Continue?"; then
     }
     
     # Setup HTTPS (generate self-signed cert if missing, configure)
-    print_info "Setting up HTTPS..."
     setup_https
     
     # Step 5: Restart service with patches
@@ -2676,83 +2674,178 @@ patch_private_key_api() {
 # Generates self-signed certificate for HTTPS support.
 # Called during install/upgrade to enable HTTPS automatically.
 # ------------------------------------------------------------------------------
-SSL_DIR="$CONFIG_DIR/ssl"
-SSL_CERT="$SSL_DIR/cert.pem"
-SSL_KEY="$SSL_DIR/key.pem"
 
 generate_ssl_cert() {
-    # Skip if certs already exist
-    if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
-        print_info "SSL certificates already exist"
-        return 0
-    fi
+    local ssl_dir="/etc/pymc_repeater/ssl"
+    local ssl_cert="$ssl_dir/cert.pem"
+    local ssl_key="$ssl_dir/key.pem"
     
-    # Create SSL directory
-    mkdir -p "$SSL_DIR"
+    print_info "Checking SSL certificates..."
     
-    # Get hostname for certificate CN
-    local hostname=$(hostname 2>/dev/null || echo "pymc-repeater")
-    local ip_address=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
-    
-    # Generate self-signed certificate (valid for 10 years)
-    if command -v openssl &> /dev/null; then
-        openssl req -x509 -newkey rsa:2048 \
-            -keyout "$SSL_KEY" \
-            -out "$SSL_CERT" \
-            -days 3650 \
-            -nodes \
-            -subj "/CN=$hostname/O=pyMC Console/C=US" \
-            -addext "subjectAltName=DNS:$hostname,DNS:localhost,IP:$ip_address,IP:127.0.0.1" \
-            2>/dev/null
-        
-        if [ $? -eq 0 ]; then
-            # Set permissions
-            chmod 600 "$SSL_KEY"
-            chmod 644 "$SSL_CERT"
-            chown -R "$SERVICE_USER:$SERVICE_USER" "$SSL_DIR" 2>/dev/null || true
-            
-            print_success "Generated SSL certificate for $hostname"
+    # Skip if certs already exist and are valid
+    if [ -f "$ssl_cert" ] && [ -f "$ssl_key" ]; then
+        # Verify cert is readable
+        if openssl x509 -in "$ssl_cert" -noout 2>/dev/null; then
+            print_info "SSL certificates already exist and are valid"
             return 0
+        else
+            print_warning "Existing SSL certificate is invalid, regenerating..."
+            rm -f "$ssl_cert" "$ssl_key"
         fi
     fi
     
-    print_warning "Could not generate SSL certificate (openssl not available)"
-    return 1
+    # Check if openssl is available
+    if ! command -v openssl &> /dev/null; then
+        print_warning "openssl not found - installing..."
+        apt-get install -y openssl 2>/dev/null || {
+            print_error "Could not install openssl - HTTPS will not be available"
+            return 1
+        }
+    fi
+    
+    # Create SSL directory with proper permissions
+    mkdir -p "$ssl_dir"
+    chmod 755 "$ssl_dir"
+    
+    # Get hostname and IP for certificate
+    local cert_hostname=$(hostname 2>/dev/null || echo "pymc-repeater")
+    local cert_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -z "$cert_ip" ] && cert_ip="127.0.0.1"
+    
+    print_info "Generating SSL certificate for $cert_hostname ($cert_ip)..."
+    
+    # Create OpenSSL config for SAN (Subject Alternative Names)
+    # This avoids the -addext flag which isn't available on older openssl
+    local ssl_conf=$(mktemp)
+    cat > "$ssl_conf" << SSLCONF
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+CN = $cert_hostname
+O = pyMC Console
+C = US
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = $cert_hostname
+DNS.2 = localhost
+IP.1 = $cert_ip
+IP.2 = 127.0.0.1
+SSLCONF
+    
+    # Generate the certificate
+    if openssl req -x509 -newkey rsa:2048 \
+        -keyout "$ssl_key" \
+        -out "$ssl_cert" \
+        -days 3650 \
+        -nodes \
+        -config "$ssl_conf" \
+        2>/dev/null; then
+        
+        # Clean up temp config
+        rm -f "$ssl_conf"
+        
+        # Set permissions - key should be readable by service user
+        chmod 600 "$ssl_key"
+        chmod 644 "$ssl_cert"
+        chown -R "${SERVICE_USER:-root}:${SERVICE_USER:-root}" "$ssl_dir" 2>/dev/null || true
+        
+        # Verify the generated cert
+        if openssl x509 -in "$ssl_cert" -noout 2>/dev/null; then
+            print_success "Generated SSL certificate for $cert_hostname"
+            print_info "  Certificate: $ssl_cert"
+            print_info "  Private key: $ssl_key"
+            return 0
+        else
+            print_error "Generated certificate is invalid"
+            rm -f "$ssl_cert" "$ssl_key"
+            return 1
+        fi
+    else
+        rm -f "$ssl_conf"
+        print_error "Failed to generate SSL certificate"
+        return 1
+    fi
 }
 
 configure_ssl_in_config() {
-    local config_file="$CONFIG_DIR/config.yaml"
+    local config_file="/etc/pymc_repeater/config.yaml"
+    local ssl_cert="/etc/pymc_repeater/ssl/cert.pem"
+    local ssl_key="/etc/pymc_repeater/ssl/key.pem"
     
+    print_info "Configuring SSL in config.yaml..."
+    
+    # Check config file exists
     if [ ! -f "$config_file" ]; then
+        print_warning "Config file not found: $config_file"
         return 1
     fi
     
-    # Only configure if certs exist
-    if [ ! -f "$SSL_CERT" ] || [ ! -f "$SSL_KEY" ]; then
+    # Check certs exist
+    if [ ! -f "$ssl_cert" ] || [ ! -f "$ssl_key" ]; then
+        print_warning "SSL certificates not found, skipping config"
         return 1
     fi
     
-    # Add SSL config using yq
-    if command -v yq &> /dev/null; then
-        # Ensure web section exists
-        if ! yq eval '.web' "$config_file" 2>/dev/null | grep -qv "null"; then
-            yq -i '.web = {}' "$config_file" 2>/dev/null || true
+    # Check yq is available
+    if ! command -v yq &> /dev/null; then
+        print_warning "yq not available - adding SSL config manually"
+        # Fallback: append to config if not already present
+        if ! grep -q "ssl_certificate" "$config_file" 2>/dev/null; then
+            cat >> "$config_file" << SSLCONFIG
+
+# SSL/HTTPS Configuration (auto-generated by pymc_console)
+web:
+  ssl_certificate: "$ssl_cert"
+  ssl_private_key: "$ssl_key"
+SSLCONFIG
+            print_success "Added SSL config to config.yaml (manual append)"
         fi
-        
-        yq -i ".web.ssl_certificate = \"$SSL_CERT\"" "$config_file" 2>/dev/null || true
-        yq -i ".web.ssl_private_key = \"$SSL_KEY\"" "$config_file" 2>/dev/null || true
-        
-        print_success "Configured HTTPS in config.yaml"
         return 0
     fi
     
-    return 1
+    # Use yq to add/update SSL config
+    # First ensure web section exists
+    yq -i '.web //= {}' "$config_file" 2>/dev/null || true
+    
+    # Set SSL paths
+    yq -i ".web.ssl_certificate = \"$ssl_cert\"" "$config_file" 2>/dev/null
+    yq -i ".web.ssl_private_key = \"$ssl_key\"" "$config_file" 2>/dev/null
+    
+    # Verify config was written
+    if grep -q "ssl_certificate" "$config_file" 2>/dev/null; then
+        print_success "Configured HTTPS in config.yaml"
+        return 0
+    else
+        print_warning "Could not verify SSL config was written"
+        return 1
+    fi
 }
 
 setup_https() {
-    # Generate cert if needed, then configure
-    generate_ssl_cert
-    configure_ssl_in_config
+    print_info "Setting up HTTPS..."
+    
+    # Step 1: Generate certificate
+    if ! generate_ssl_cert; then
+        print_warning "SSL certificate generation failed - HTTPS will not be available"
+        return 1
+    fi
+    
+    # Step 2: Configure in config.yaml
+    if ! configure_ssl_in_config; then
+        print_warning "SSL configuration failed - HTTPS may not work"
+        return 1
+    fi
+    
+    print_success "HTTPS setup complete"
+    return 0
 }
 
 # ------------------------------------------------------------------------------
