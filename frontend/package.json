@@ -1,13 +1,14 @@
 {
   "name": "pymc_console",
-  "version": "0.9.121",
+  "version": "0.9.122",
   "description": "Vite + React Dashboard for pyMC_Repeater",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "build": "vite build",
+    "encrypt-assets": "node scripts/encrypt-assets.mjs",
+    "build": "npm run encrypt-assets && vite build",
     "build:static": "npm run build && npm run package",
     "package": "rm -rf dist && mkdir -p dist && cp -r out/* dist/",
     "preview": "vite preview",
