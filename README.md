@@ -143,9 +143,7 @@ The installer will:
 /opt/pymc_console/    ← Installed console files
 ```
 
-Once complete, access your dashboard at `https://<your-pi-ip>:8000`
-
-> **Note:** The installer automatically generates a self-signed SSL certificate and enables HTTPS. Your browser will show a security warning — click **Advanced** → **Proceed** to accept the self-signed certificate. This is a one-time action per browser.
+Once complete, access your dashboard at `http://<your-pi-ip>:8000`
 
 ## Management Menu
 
@@ -274,32 +272,11 @@ cat /etc/pymc_repeater/config.yaml
 ### Dashboard not loading
 
 1. Verify service is running: `sudo systemctl status pymc-repeater`
-2. Check if port 8000 is accessible: `curl -k https://localhost:8000/api/stats`
-3. If using HTTP instead of HTTPS, the connection will be refused (HTTPS is required)
+2. Check if port 8000 is accessible: `curl http://localhost:8000/api/stats`
 
 ### "Radio presets file not found" warning
 
 This warning during installation is non-fatal. The installer will continue and you can configure radio settings manually. The presets are fetched from an API; if the API is unavailable, common presets are offered as fallback options.
-
-### Browser shows "Your connection is not private"
-
-This is expected behavior for the self-signed SSL certificate. Click **Advanced** → **Proceed to [IP] (unsafe)** to access the dashboard. This is safe for local network use.
-
-### Using custom SSL certificates
-
-To use your own certificates (e.g., from Let's Encrypt), update the paths in `/etc/pymc_repeater/config.yaml`:
-
-```yaml
-web:
-  ssl_certificate: /path/to/your/cert.pem
-  ssl_private_key: /path/to/your/key.pem
-```
-
-Then restart the service: `sudo systemctl restart pymc-repeater`
-
-The auto-generated certificates are stored at:
-- Certificate: `/etc/pymc_repeater/ssl/cert.pem`
-- Private key: `/etc/pymc_repeater/ssl/key.pem`
 
 ## Uninstalling
 
