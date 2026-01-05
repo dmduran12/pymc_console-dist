@@ -2897,17 +2897,15 @@ new_config = '''            # SSL/HTTPS Configuration (pymc_console patch)
             ssl_key = self.config.get("web", {}).get("ssl_private_key", "")
             
             ssl_config = {}
-            if ssl_cert and ssl_key:
-                import os
-                if os.path.isfile(ssl_cert) and os.path.isfile(ssl_key):
-                    ssl_config = {
-                        "server.ssl_module": "builtin",
-                        "server.ssl_certificate": ssl_cert,
-                        "server.ssl_private_key": ssl_key,
-                    }
-                    logger.info(f"SSL enabled with certificate: {ssl_cert}")
-                else:
-                    logger.warning(f"SSL certificate or key not found, running HTTP only")
+            if ssl_cert and ssl_key and os.path.isfile(ssl_cert) and os.path.isfile(ssl_key):
+                ssl_config = {
+                    "server.ssl_module": "builtin",
+                    "server.ssl_certificate": ssl_cert,
+                    "server.ssl_private_key": ssl_key,
+                }
+                logger.info(f"SSL enabled with certificate: {ssl_cert}")
+            elif ssl_cert or ssl_key:
+                logger.warning(f"SSL certificate or key not found, running HTTP only")
             
             cherrypy.config.update(
                 {
