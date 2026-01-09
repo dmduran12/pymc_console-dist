@@ -76,10 +76,10 @@ The MeshCore Python ecosystem has three components:
 - **Animated edges** — Trace-in effect on toggle, smooth fade-out
 - **Filter toggles** — Solo view for hub nodes or direct neighbors only
 - **Loop detection** — Identifies redundant paths (double-line rendering)
-- **Visual identity** — Yellow house icon for local node, indigo rings for neighbors
+- **High-contrast markers** — Light fill with dark outline ensures visibility against any overlay
 - **Path health panel** — Health scores, weakest links, and latency estimates for observed routes
 - **Mobile node detection** — Identifies volatile nodes that appear/disappear frequently
-- **Wardriving coverage heatmap** — Overlay coverage data from external wardriving servers (e.g., coverage.wcmesh.com) as a GPU-accelerated heatmap showing signal coverage across your area
+- **Wardriving coverage overlay** — H3 hexagonal tiles from external coverage servers (e.g., coverage.wcmesh.com) with SNR-based coloring
 
 ![Topology Map](docs/images/topology.png)
 
@@ -92,6 +92,8 @@ The MeshCore Python ecosystem has three components:
 - **Mode toggle** — Forward (repeating) or Monitor (RX only)
 - **Duty cycle** — Enable/disable enforcement
 - **Radio config** — Live frequency, power, SF, bandwidth changes
+- **Theme selection** — Six color schemes (Seoul256, Gruvbox, Deus, Gotham, Sonokai, Kanagawa)
+- **Background images** — Multiple ambient backgrounds with adjustable brightness
 
 ![Settings](docs/images/settings.png)
 

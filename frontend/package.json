@@ -1,6 +1,6 @@
 {
   "name": "pymc_console",
-  "version": "0.9.127",
+  "version": "0.9.128",
   "description": "Vite + React Dashboard for pyMC_Repeater",
   "private": true,
   "type": "module",
@@ -20,6 +20,7 @@
     "@deck.gl/layers": "^9.2.5",
     "@deck.gl/mapbox": "^9.2.5",
     "@types/leaflet": "^1.9.21",
+    "@types/three": "^0.182.0",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
     "h3-js": "^4.4.0",
@@ -33,6 +34,7 @@
     "react-map-gl": "^8.1.0",
     "react-router-dom": "^7.1.1",
     "recharts": "^3.5.1",
+    "three": "^0.182.0",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
