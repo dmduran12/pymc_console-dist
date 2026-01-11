@@ -96,8 +96,7 @@ REPEATER_DIR="$INSTALL_DIR"
 BACKEND_SERVICE="pymc-repeater"
 
 # Default branch for installations
-# NOTE: feat/dmg branch is required for login/authentication functionality
-DEFAULT_BRANCH="feat/dmg"
+DEFAULT_BRANCH="dev"
 
 # Colors for terminal output
 RED='\033[0;31m'
@@ -794,10 +793,10 @@ do_install() {
     # Branch selection
     local branch="${1:-}"
     if [ -z "$branch" ]; then
-        branch=$($DIALOG --backtitle "pyMC Console Management" --title "Select Branch" --menu "\nSelect the pyMC_Repeater branch to install:\n\n⚠️  feat/dmg is REQUIRED for login functionality" 16 65 4 \
-            "feat/dmg" "DMG branch (recommended - has login)" \
-            "dev" "Development branch" \
+        branch=$($DIALOG --backtitle "pyMC Console Management" --title "Select Branch" --menu "\nSelect the pyMC_Repeater branch to install:" 15 65 4 \
+            "dev" "Development branch (recommended)" \
             "main" "Stable release" \
+            "feat/dmg" "DMG branch (experimental)" \
             "custom" "Enter custom branch name" 3>&1 1>&2 2>&3)
         
         if [ -z "$branch" ]; then
@@ -1090,12 +1089,11 @@ Continue?"; then
    • pyMC Console (dashboard)
 
  Current branch: $current_branch
- ⚠️  feat/dmg is REQUIRED for login functionality
 
- Select the branch for pyMC Repeater:" 20 65 5 \
-            "feat/dmg" "DMG branch (recommended - has login)" \
-            "dev" "Development branch" \
+ Select the branch for pyMC Repeater:" 19 65 5 \
+            "dev" "Development branch (recommended)" \
             "main" "Stable release" \
+            "feat/dmg" "DMG branch (experimental)" \
             "keep" "Keep current branch ($current_branch)" \
             "custom" "Enter custom branch name" 3>&1 1>&2 2>&3)
         
