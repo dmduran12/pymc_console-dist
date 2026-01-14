@@ -1,1 +1,0 @@
-import{r}from"./vendor-react-CMBO2Uve.js";function e(e,t,n=!0,c=!1){const u=r.useRef(e);r.useEffect(()=>{u.current=e},[e]),r.useEffect(()=>{if(!n)return;c||u.current();const r=setInterval(()=>{u.current()},t);return()=>clearInterval(r)},[t,n,c])}export{e as u};

@@ -1,1 +1,0 @@
-import{r as e,j as o}from"./vendor-react-CMBO2Uve.js";const t=e.memo(function({ranges:e,selectedIndex:t,onSelect:a,isPending:l}){return o.jsx("div",{className:"toggle-group flex-shrink-0 overflow-x-auto "+(l?"opacity-70":""),children:e.map((e,l)=>o.jsx("button",{onClick:()=>a(l),className:"toggle-group-item "+(t===l?"active":""),children:e.label},e.label))})});export{t as T};

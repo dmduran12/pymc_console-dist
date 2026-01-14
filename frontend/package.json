@@ -1,6 +1,6 @@
 {
   "name": "pymc_console",
-  "version": "0.9.132",
+  "version": "0.9.133",
   "description": "Vite + React Dashboard for pyMC_Repeater",
   "private": true,
   "type": "module",
@@ -42,6 +42,7 @@
     "react-router-dom": "^7.1.1",
     "recharts": "^3.5.1",
     "three": "^0.182.0",
+    "uplot": "^1.6.32",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
