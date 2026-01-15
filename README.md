@@ -53,7 +53,7 @@ The MeshCore Python ecosystem has three components:
 - **TX Delay Recommendations** — Slot-based delay optimization with network role classification (edge/relay/hub/backbone)
 - **LBT Insights widgets** — Channel health, collision risk, noise floor, link quality at a glance
 - **Time range selector** — View stats from 20 minutes to 7 days
-- **Recent packets** — Live feed of incoming traffic
+- **Recent packets** — Live feed of incoming traffic with centralized polling (every 3s)
 
 ![Dashboard](docs/images/dashboard.png)
 
@@ -73,7 +73,7 @@ The MeshCore Python ecosystem has three components:
 - **3D arc edges** — Topology edges and neighbor lines render as elevated arcs via deck.gl PathLayer (GPU-accelerated)
 - **Viterbi HMM path decoding** — Hidden Markov Model resolves prefix collisions using physics-based transition costs and observation evidence
 - **Ghost node discovery** — Unknown repeaters detected when no known candidate is geographically plausible; locations estimated from anchor midpoints
-- **Deep Analysis** — One-click full topology rebuild from 20K+ packets with Viterbi decoding
+- **Deep Analysis** — One-click full topology rebuild from 75K packets with Viterbi decoding
 - **Edge confidence** — Line thickness and opacity scale with observation count and certainty
 - **Animated edges** — Trace-in effect on toggle, smooth fade-out
 - **Filter toggles** — Solo view for hub nodes, direct neighbors, or traffic-based filtering
@@ -361,7 +361,7 @@ Before Viterbi decoding, candidates are scored using four-factor analysis inspir
 - **Dual-hop anchoring** — Candidates scored by distance to both previous and next hops (a relay must be within RF range of both neighbors)
 - **Score-weighted redistribution** — Appearance counts redistributed proportionally by combined score
 
-The system loads up to 20,000 packets (~7 days of traffic) to build comprehensive topology evidence.
+The system maintains up to 75,000 packets in session memory (~2.5 days at 30k/day) for comprehensive topology evidence.
 
 ![Prefix Disambiguation](docs/images/disambiguation.png)
 
