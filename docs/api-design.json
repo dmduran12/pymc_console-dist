@@ -1,1350 +1,434 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "pyMC Console WebSocket API Design Specification",
-  "version": "2.0.0",
-  "description": "WebSocket-first API specification for the pyMC Console backend. This document defines a real-time, bidirectional communication protocol for packet streaming, topology updates, statistics, and mesh network monitoring. Designed for delivery to a backend specialist implementing these features in pyMC_Repeater.",
+  "title": "pyMC Console API Specification",
+  "version": "3.0.0",
+  "description": "Simplified API specification for pyMC_Repeater backend. WebSocket for radio events, REST for everything else.",
   "meta": {
     "author": "pyMC Console Team",
-    "created": "2026-01-15",
-    "target_backend": "pyMC_Repeater (CherryPy + SQLite + ws4py or websockets)",
-    "frontend_framework": "React + TypeScript + Zustand",
-    "intended_audience": "Backend/Database Specialist",
-    "protocol": "WebSocket (RFC 6455)"
+    "created": "2026-01-16",
+    "target_backend": "pyMC_Repeater (CherryPy + SQLite)",
+    "philosophy": "KISS - Keep It Simple Stupid"
   },
 
   "architecture": {
-    "overview": "This specification defines a WebSocket-first architecture where the primary data flow is through persistent, bidirectional connections. REST endpoints are retained only for initial data hydration and one-off queries. All real-time updates (packets, stats, topology changes, neighbor events) flow through WebSocket channels, eliminating polling overhead and enabling instant UI updates.",
-    
-    "design_principles": [
-      {
-        "principle": "WebSocket-First, REST-Second",
-        "rationale": "WebSocket provides true real-time communication with minimal overhead. REST polling wastes bandwidth, increases server load, and introduces latency. Use WebSocket for all streaming data; retain REST only for initial hydration, historical queries, and actions (POST/DELETE)."
-      },
-      {
-        "principle": "Server-Side Computation",
-        "rationale": "All heavy computation (topology analysis, prefix disambiguation, airtime calculation, time bucketing) should occur server-side. The server pushes computed results; the frontend is a thin display layer."
-      },
-      {
-        "principle": "Subscription-Based Data Flow",
-        "rationale": "Clients subscribe to specific data channels (packets, stats, topology, neighbors). Server pushes only subscribed data, reducing bandwidth. Clients can dynamically adjust subscriptions."
-      },
-      {
-        "principle": "Delta Updates",
-        "rationale": "After initial state hydration, server sends only changes (new packets, updated edges, changed stats). Never re-send full state unless explicitly requested."
-      },
-      {
-        "principle": "Heartbeat & Reconnection",
-        "rationale": "Maintain connection health with periodic pings. Clients must handle disconnection gracefully and re-subscribe on reconnect. Server should support session resumption."
-      },
-      {
-        "principle": "Message Sequencing",
-        "rationale": "All messages include sequence numbers for ordering and gap detection. Clients can request replay of missed messages after reconnection."
-      }
-    ],
+    "overview": "Two communication channels with clear separation of concerns.",
+    "websocket": {
+      "purpose": "Real-time radio hardware events only",
+      "endpoint": "ws://host:8000/radio",
+      "when_to_use": "Streaming RX packets, TX confirmations, noise floor samples, radio errors"
+    },
+    "rest": {
+      "purpose": "Everything else - queries, configuration, historical data, actions",
+      "base_url": "http://host:8000/api",
+      "when_to_use": "Initial data load, pagination, config changes, time series queries"
+    },
+    "mental_model": "WebSocket = live radio wire. REST = database/config access."
+  },
 
-    "current_client_side_computations_to_offload": [
-      "Prefix disambiguation (4-factor scoring, collision detection)",
-      "Topology edge building from packet paths",
-      "Viterbi HMM path decoding for ghost node discovery",
-      "Airtime calculation using Semtech formula",
-      "Time bucketing for charts (received/transmitted/forwarded/dropped)",
-      "LBT statistics computation (retry rates, backoff analysis)",
-      "Sparkline data generation per node",
-      "Path health scoring",
-      "Mobile node detection",
-      "Edge betweenness centrality",
-      "Zero-hop neighbor detection"
-    ],
+  "sx1262_capabilities": {
+    "description": "What the SX1262 radio hardware can actually report. These are the source data for WebSocket events.",
+    
+    "on_packet_receive": {
+      "rssi_dbm": "Received signal strength (register / -2)",
+      "snr_db": "Signal-to-noise ratio",
+      "signal_rssi_dbm": "Alternative RSSI measurement",
+      "payload": "Raw packet bytes",
+      "crc_valid": "Boolean - CRC check passed",
+      "header_valid": "Boolean - header decoded successfully"
+    },
+    
+    "on_transmit_complete": {
+      "airtime_ms": "Actual transmission duration in milliseconds",
+      "lbt_attempts": "Number of CAD (Listen Before Talk) retries",
+      "lbt_backoff_delays_ms": "Array of backoff durations if channel was busy",
+      "channel_busy": "Boolean - whether LBT detected activity"
+    },
+    
+    "continuous_sampling": {
+      "noise_floor_dbm": "Instantaneous RSSI when radio is idle",
+      "sampling_interval": "Background task samples every ~10ms during quiet periods",
+      "averaging": "20 samples averaged, reported every 5 seconds"
+    },
+    
+    "radio_state": {
+      "frequency_hz": "Current operating frequency",
+      "tx_power_dbm": "Current TX power",
+      "spreading_factor": "Current SF (5-12)",
+      "bandwidth_hz": "Current bandwidth",
+      "coding_rate": "Current coding rate (5-8)",
+      "initialized": "Boolean - radio ready"
+    },
+    
+    "irq_events": {
+      "description": "Hardware interrupts that can be monitored",
+      "IRQ_TX_DONE": "Transmission complete",
+      "IRQ_RX_DONE": "Packet received",
+      "IRQ_CRC_ERR": "CRC error on receive",
+      "IRQ_TIMEOUT": "RX or TX timeout",
+      "IRQ_PREAMBLE_DETECTED": "Preamble detected (packet incoming)",
+      "IRQ_HEADER_VALID": "Header successfully decoded",
+      "IRQ_HEADER_ERR": "Header decode error",
+      "IRQ_CAD_DONE": "Channel activity detection complete",
+      "IRQ_CAD_DETECTED": "Activity detected during CAD"
+    }
+  },
+
+  "websocket": {
+    "endpoint": "/radio",
+    "description": "Single WebSocket endpoint for all radio events. No subscriptions, no channels - just connect and receive.",
+    
+    "message_format": {
+      "type": "string - event type identifier",
+      "ts": "integer - Unix timestamp in milliseconds",
+      "data": "object - event-specific payload"
+    },
+
+    "server_events": {
+      "rx": {
+        "description": "Packet received from radio",
+        "trigger": "IRQ_RX_DONE with valid CRC",
+        "data": {
+          "packet_hash": "string - unique packet identifier",
+          "rssi": "integer - RSSI in dBm",
+          "snr": "number - SNR in dB",
+          "signal_rssi": "integer - signal RSSI in dBm",
+          "payload_len": "integer - payload size in bytes",
+          "crc_ok": "boolean",
+          "type": "integer - MeshCore payload type (0-15)",
+          "route": "integer - MeshCore route type (0-3)",
+          "src_hash": "string - source node hash",
+          "path": "array of strings - 2-char hop prefixes"
+        },
+        "example": {
+          "type": "rx",
+          "ts": 1736934849000,
+          "data": {
+            "packet_hash": "a1b2c3d4",
+            "rssi": -95,
+            "snr": 7.5,
+            "signal_rssi": -97,
+            "payload_len": 48,
+            "crc_ok": true,
+            "type": 4,
+            "route": 1,
+            "src_hash": "0x42AB",
+            "path": ["FA", "79", "24"]
+          }
+        }
+      },
+
+      "tx": {
+        "description": "Packet transmitted by this node",
+        "trigger": "IRQ_TX_DONE after send_packet()",
+        "data": {
+          "packet_hash": "string - unique packet identifier",
+          "airtime_ms": "number - actual TX duration",
+          "lbt_attempts": "integer - CAD retry count (0 = clear on first try)",
+          "lbt_backoff_ms": "array of numbers - backoff delays if retried",
+          "channel_busy": "boolean - true if any CAD detected activity"
+        },
+        "example": {
+          "type": "tx",
+          "ts": 1736934849000,
+          "data": {
+            "packet_hash": "d4c3b2a1",
+            "airtime_ms": 145.2,
+            "lbt_attempts": 2,
+            "lbt_backoff_ms": [85, 170],
+            "channel_busy": true
+          }
+        }
+      },
+
+      "noise": {
+        "description": "Periodic noise floor measurement",
+        "trigger": "Background sampling during idle periods",
+        "frequency": "Every 5 seconds when radio is idle",
+        "data": {
+          "noise_floor_dbm": "number - averaged noise floor reading"
+        },
+        "example": {
+          "type": "noise",
+          "ts": 1736934849000,
+          "data": {
+            "noise_floor_dbm": -107.5
+          }
+        }
+      },
+
+      "cad": {
+        "description": "Channel activity detection result",
+        "trigger": "CAD operation completed (during LBT or explicit check)",
+        "data": {
+          "detected": "boolean - activity detected",
+          "det_peak": "integer - detection peak threshold used",
+          "det_min": "integer - detection minimum threshold used"
+        },
+        "example": {
+          "type": "cad",
+          "ts": 1736934849000,
+          "data": {
+            "detected": true,
+            "det_peak": 24,
+            "det_min": 12
+          }
+        }
+      },
+
+      "error": {
+        "description": "Radio error event",
+        "trigger": "CRC error, header error, or timeout",
+        "data": {
+          "code": "string - error type: CRC_ERR, HEADER_ERR, TIMEOUT",
+          "rssi": "integer - RSSI if available (may help diagnose)",
+          "snr": "number - SNR if available"
+        },
+        "example": {
+          "type": "error",
+          "ts": 1736934849000,
+          "data": {
+            "code": "CRC_ERR",
+            "rssi": -98,
+            "snr": -2.5
+          }
+        }
+      },
+
+      "hardware": {
+        "description": "Periodic system hardware metrics",
+        "trigger": "Background sampling every 10 seconds",
+        "frequency": "Every 10 seconds",
+        "data": {
+          "cpu_percent": "number - CPU usage percentage",
+          "memory_percent": "number - RAM usage percentage",
+          "disk_percent": "number - Disk usage percentage",
+          "temperature_c": "number or null - CPU temperature in Celsius (null if unavailable)"
+        },
+        "example": {
+          "type": "hardware",
+          "ts": 1736934849000,
+          "data": {
+            "cpu_percent": 23.5,
+            "memory_percent": 45.2,
+            "disk_percent": 67.8,
+            "temperature_c": 52.3
+          }
+        }
+      }
+    },
+
+    "client_commands": {
+      "description": "Commands client can send to control radio. Keep these minimal.",
+      
+      "send_advert": {
+        "description": "Trigger ADVERT broadcast",
+        "request": {"cmd": "send_advert"},
+        "response": {"ok": true}
+      },
+      
+      "set_tx_power": {
+        "description": "Change TX power (live, no restart needed)",
+        "request": {"cmd": "set_tx_power", "dbm": 22},
+        "response": {"ok": true, "applied": 22},
+        "constraints": "-17 to 22 dBm for SX1262"
+      }
+    },
 
     "connection_lifecycle": {
-      "1_connect": "Client opens WebSocket to ws://host:8000/ws",
-      "2_authenticate": "Client sends 'auth' message with session token (if required)",
-      "3_subscribe": "Client sends 'subscribe' messages for desired channels",
-      "4_hydrate": "Server sends initial state snapshot for subscribed channels",
-      "5_stream": "Server pushes delta updates as events occur",
-      "6_heartbeat": "Periodic ping/pong to maintain connection (every 30s)",
-      "7_reconnect": "On disconnect, client reconnects and re-subscribes with last_seq for replay"
+      "1_connect": "Client opens WebSocket to ws://host:8000/radio",
+      "2_receive": "Server immediately starts pushing events",
+      "3_command": "Client sends commands as needed (optional)",
+      "4_disconnect": "On disconnect, client simply reconnects",
+      "notes": [
+        "No authentication on WebSocket (same as REST API currently)",
+        "No session state - each connection is independent",
+        "No replay of missed events - use REST for historical data",
+        "No heartbeat needed - WebSocket protocol handles keepalive"
+      ]
+    },
+
+    "implementation_notes": {
+      "library": "Use ws4py or websockets with CherryPy",
+      "broadcast": "Maintain list of connected clients, broadcast to all",
+      "threading": "Events come from async radio callbacks - use queue or call_soon_threadsafe",
+      "estimated_code": "~100 lines for WebSocket handler"
     }
   },
 
-  "websocket_protocol": {
-    "endpoint": "ws://host:8000/ws",
-    "subprotocol": "pymc-console-v2",
+  "rest_api": {
+    "description": "RESTful endpoints organized by domain. Build in phases.",
 
-    "message_format": {
-      "description": "All messages are JSON objects with a standard envelope",
-      "schema": {
-        "type": { "type": "string", "required": true, "description": "Message type identifier" },
-        "channel": { "type": "string", "description": "Channel name for subscriptions and events" },
-        "seq": { "type": "integer", "description": "Server sequence number (for server→client messages)" },
-        "req_id": { "type": "string", "description": "Request ID for client→server messages (for correlation)" },
-        "payload": { "type": "object", "description": "Message-specific data" },
-        "timestamp": { "type": "integer", "description": "Unix timestamp (milliseconds)" },
-        "error": { "type": "string", "description": "Error message if applicable" }
-      },
-      "example_client_message": {
-        "type": "subscribe",
-        "channel": "packets",
-        "req_id": "abc123",
-        "payload": { "filters": { "types": [4] } }
-      },
-      "example_server_message": {
-        "type": "packet",
-        "channel": "packets",
-        "seq": 12345,
-        "timestamp": 1736934849000,
-        "payload": { "packet": "(full Packet object - see Packet schema)" }
-      }
-    },
-
-    "client_message_types": {
-      "subscribe": {
-        "description": "Subscribe to a data channel",
-        "payload": {
-          "channel": "string (required) - Channel to subscribe to",
-          "filters": "object (optional) - Channel-specific filters",
-          "last_seq": "integer (optional) - Last received sequence for replay"
-        },
-        "channels": ["packets", "stats", "topology", "neighbors", "lbt", "logs", "hardware", "noise_floor", "config"]
-      },
-      "unsubscribe": {
-        "description": "Unsubscribe from a data channel",
-        "payload": {
-          "channel": "string (required)"
-        }
-      },
-      "request": {
-        "description": "One-off data request (query/action)",
-        "payload": {
-          "action": "string (required) - Action identifier",
-          "params": "object - Action-specific parameters"
-        }
-      },
-      "ping": {
-        "description": "Client heartbeat",
-        "payload": {}
-      }
-    },
-
-    "server_message_types": {
-      "subscribed": {
-        "description": "Confirmation of subscription with initial state",
-        "payload": {
-          "channel": "string",
-          "state": "object - Initial state snapshot",
-          "seq": "integer - Starting sequence number"
-        }
-      },
-      "unsubscribed": {
-        "description": "Confirmation of unsubscription",
-        "payload": { "channel": "string" }
-      },
-      "event": {
-        "description": "Channel event (delta update)",
-        "payload": "varies by channel"
-      },
-      "response": {
-        "description": "Response to a request message",
-        "payload": {
-          "req_id": "string - Correlation ID from request",
-          "data": "object - Response data",
-          "error": "string (optional)"
-        }
-      },
-      "pong": {
-        "description": "Server heartbeat response",
-        "payload": { "server_time": "integer" }
-      },
-      "error": {
-        "description": "Error notification",
-        "payload": {
-          "code": "integer",
-          "message": "string",
-          "req_id": "string (optional)"
-        }
-      }
-    }
-  },
-
-  "channels": {
-    "packets": {
-      "description": "Real-time packet stream with filtering",
-      "rationale": "Replace 3-second polling with instant push. Each packet is sent as it arrives, enabling true real-time monitoring.",
-
-      "subscribe_options": {
-        "filters": {
-          "types": { "type": "array", "description": "Payload types to include (0-15)" },
-          "routes": { "type": "array", "description": "Route types to include (0-3)" },
-          "transmitted_only": { "type": "boolean", "description": "Only TX packets" },
-          "received_only": { "type": "boolean", "description": "Only RX packets" },
-          "min_rssi": { "type": "integer", "description": "Minimum RSSI threshold" },
-          "src_prefixes": { "type": "array", "description": "Source hash prefixes to include" },
-          "exclude_duplicates": { "type": "boolean", "default": false }
-        },
-        "include_path_analysis": { "type": "boolean", "default": false, "description": "Include server-side disambiguation for each packet" }
-      },
-
-      "initial_state": {
-        "description": "Sent on subscription",
-        "payload": {
-          "recent_packets": "array - Last 100 packets matching filters",
-          "counts": {
-            "total_rx": "integer",
-            "total_tx": "integer",
-            "total_forwarded": "integer",
-            "total_dropped": "integer"
-          }
-        }
-      },
-
-      "events": {
-        "packet_received": {
-          "description": "New packet received from radio",
-          "payload": {
-            "packet": "Full Packet object",
-            "path_analysis": "optional - Resolved path with confidence scores"
-          }
-        },
-        "packet_transmitted": {
-          "description": "Packet transmitted by this node",
-          "payload": {
-            "packet": "Full Packet object"
-          }
-        },
-        "duplicate_detected": {
-          "description": "Duplicate packet received",
-          "payload": {
-            "packet_hash": "string",
-            "duplicate_count": "integer",
-            "rssi": "integer",
-            "snr": "number"
-          }
-        }
-      }
-    },
-
-    "stats": {
-      "description": "Real-time statistics updates",
-      "rationale": "Push stats changes as they occur rather than polling every 3 seconds. Supports multiple aggregation windows.",
-
-      "subscribe_options": {
-        "windows": { "type": "array", "default": ["live", "hourly"], "description": "Time windows to receive: live, hourly, daily" },
-        "include_airtime": { "type": "boolean", "default": true },
-        "bucket_count": { "type": "integer", "default": 20, "description": "Number of buckets for live window" }
-      },
-
-      "initial_state": {
-        "description": "Full stats snapshot on subscription",
-        "payload": {
+    "phase_1_core": {
+      "description": "Foundation endpoints - these exist or need minor updates",
+      
+      "GET /api/stats": {
+        "description": "Current system state snapshot",
+        "response": {
           "node": {
             "name": "string",
-            "local_hash": "string",
-            "public_key": "string",
+            "hash": "string - e.g. 0x42AB1234",
             "uptime_seconds": "integer"
           },
-          "counts": {
-            "rx_count": "integer",
-            "tx_count": "integer",
-            "forwarded_count": "integer",
-            "dropped_count": "integer"
-          },
-          "rates": {
-            "rx_per_hour": "number",
-            "tx_per_hour": "number",
-            "forwarded_per_hour": "number"
-          },
           "radio": {
-            "noise_floor_dbm": "number",
-            "duty_cycle_percent": "number",
-            "airtime_used_ms": "integer",
-            "airtime_remaining_ms": "integer"
+            "frequency_hz": "integer",
+            "tx_power_dbm": "integer",
+            "spreading_factor": "integer",
+            "bandwidth_hz": "integer",
+            "coding_rate": "integer",
+            "noise_floor_dbm": "number"
           },
-          "buckets": {
-            "live": "array of { bucket, start, end, rx, tx, forwarded, dropped, airtime_ms }",
-            "hourly": "array of hourly aggregates (last 24h)"
-          }
-        }
+          "counts": {
+            "rx_total": "integer",
+            "tx_total": "integer",
+            "forwarded_total": "integer",
+            "dropped_total": "integer"
+          },
+          "mode": "string - forward|monitor",
+          "duty_cycle_enabled": "boolean"
+        },
+        "status": "EXISTS - may need field additions"
       },
 
-      "events": {
-        "counts_updated": {
-          "description": "Packet counts changed",
-          "payload": {
-            "rx_count": "integer",
-            "tx_count": "integer",
-            "forwarded_count": "integer",
-            "dropped_count": "integer",
-            "delta": { "rx": "integer", "tx": "integer", "forwarded": "integer", "dropped": "integer" }
-          }
+      "GET /api/config": {
+        "description": "Full configuration dump",
+        "status": "EXISTS"
+      },
+
+      "POST /api/config": {
+        "description": "Update configuration (persists to disk)",
+        "status": "EXISTS as update_radio_config - consider consolidating"
+      },
+
+      "GET /api/logs": {
+        "description": "Recent system log entries",
+        "params": {
+          "limit": {"type": "integer", "default": 100, "max": 1000},
+          "level": {"type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR"], "description": "Filter by minimum log level"}
         },
-        "rates_updated": {
-          "description": "Rate calculations updated (every minute)",
-          "payload": {
-            "rx_per_hour": "number",
-            "tx_per_hour": "number",
-            "forwarded_per_hour": "number"
-          }
+        "response": {
+          "logs": [{
+            "timestamp": "integer - Unix timestamp",
+            "level": "string - DEBUG|INFO|WARNING|ERROR",
+            "module": "string - source module name",
+            "message": "string - log message content"
+          }]
         },
-        "bucket_updated": {
-          "description": "Time bucket stats updated",
-          "payload": {
-            "window": "live|hourly|daily",
-            "bucket": "BucketData object"
-          }
-        },
-        "noise_floor_updated": {
-          "description": "Noise floor reading changed",
-          "payload": {
-            "noise_floor_dbm": "number",
-            "trend": "up|down|stable"
-          }
-        },
-        "duty_cycle_updated": {
-          "description": "Duty cycle changed",
-          "payload": {
-            "duty_cycle_percent": "number",
-            "airtime_used_ms": "integer",
-            "airtime_remaining_ms": "integer"
-          }
-        }
+        "status": "EXISTS"
       }
     },
 
-    "topology": {
-      "description": "Real-time mesh topology updates",
-      "rationale": "Push topology changes as packets arrive. Server maintains edge state and pushes deltas. Eliminates need for client-side topology computation.",
+    "phase_2_packets": {
+      "description": "Packet storage and retrieval with proper pagination",
 
-      "subscribe_options": {
-        "confidence_threshold": { "type": "number", "default": 0.4, "description": "Minimum confidence for edge inclusion" },
-        "include_weak_edges": { "type": "boolean", "default": true },
-        "include_centrality": { "type": "boolean", "default": true },
-        "include_mobile_detection": { "type": "boolean", "default": true },
-        "include_path_registry": { "type": "boolean", "default": false },
-        "include_ghost_nodes": { "type": "boolean", "default": true }
+      "GET /api/packets": {
+        "description": "Paginated packet list with filtering",
+        "params": {
+          "limit": {"type": "integer", "default": 100, "max": 1000},
+          "offset": {"type": "integer", "default": 0, "description": "Skip N packets for pagination"},
+          "before": {"type": "integer", "description": "Unix timestamp - get packets older than this"},
+          "after": {"type": "integer", "description": "Unix timestamp - get packets newer than this"},
+          "type": {"type": "integer", "description": "Filter by payload type (0-15)"},
+          "route": {"type": "integer", "description": "Filter by route type (0-3)"},
+          "transmitted": {"type": "boolean", "description": "Filter to TX only"},
+          "received": {"type": "boolean", "description": "Filter to RX only"},
+          "src_hash": {"type": "string", "description": "Filter by source node hash"},
+          "dst_hash": {"type": "string", "description": "Filter by destination node hash"},
+          "path_contains": {"type": "string", "description": "Filter packets where path contains this 2-char prefix"}
+        },
+        "response": {
+          "packets": "array of Packet objects",
+          "pagination": {
+            "has_more": "boolean",
+            "next_cursor": "string - timestamp for next page",
+            "count": "integer - packets in this response"
+          }
+        },
+        "status": "EXISTS as recent_packets - needs pagination upgrade"
       },
 
-      "initial_state": {
-        "description": "Full topology snapshot on subscription",
-        "payload": {
-          "edges": "array of TopologyEdge objects",
-          "hub_nodes": "array of node hashes with high centrality",
-          "gateway_nodes": "array of gateway node hashes",
-          "mobile_nodes": "array of volatile node hashes",
-          "loops": "array of NetworkLoop objects",
-          "centrality": "map of hash -> centrality score",
-          "ghost_clusters": "array of GhostCluster objects",
-          "disambiguation_stats": {
-            "total_prefixes": "integer",
-            "collision_prefixes": "integer",
-            "collision_rate_percent": "number",
-            "avg_confidence": "number"
-          },
-          "local_prefix": "string",
-          "packet_count_analyzed": "integer",
-          "computed_at": "timestamp"
-        }
-      },
-
-      "events": {
-        "edge_added": {
-          "description": "New edge discovered",
-          "payload": {
-            "edge": "TopologyEdge object",
-            "is_certain": "boolean"
-          }
-        },
-        "edge_updated": {
-          "description": "Edge observation count or confidence changed",
-          "payload": {
-            "edge_key": "string",
-            "updates": {
-              "observation_count": "integer",
-              "certain_count": "integer",
-              "avg_confidence": "number",
-              "last_seen": "timestamp"
-            }
-          }
-        },
-        "edge_removed": {
-          "description": "Edge fell below threshold or expired",
-          "payload": {
-            "edge_key": "string",
-            "reason": "threshold|expired|invalid"
-          }
-        },
-        "hub_detected": {
-          "description": "Node classified as hub",
-          "payload": {
-            "hash": "string",
-            "centrality_score": "number",
-            "traffic_percent": "number"
-          }
-        },
-        "hub_demoted": {
-          "description": "Node no longer qualifies as hub",
-          "payload": { "hash": "string" }
-        },
-        "gateway_detected": {
-          "description": "Node classified as gateway",
-          "payload": { "hash": "string", "traffic_percent": "number" }
-        },
-        "mobile_detected": {
-          "description": "Node identified as mobile/volatile",
-          "payload": {
-            "hash": "string",
-            "volatility_score": "number"
-          }
-        },
-        "loop_detected": {
-          "description": "Redundant path loop discovered",
-          "payload": {
-            "loop": "NetworkLoop object"
-          }
-        },
-        "ghost_cluster_updated": {
-          "description": "Ghost node cluster changed",
-          "payload": {
-            "prefix": "string",
-            "observation_count": "integer",
-            "is_likely_real": "boolean",
-            "estimated_location": { "lat": "number", "lon": "number" }
-          }
-        },
-        "disambiguation_updated": {
-          "description": "Prefix disambiguation confidence changed",
-          "payload": {
-            "prefix": "string",
-            "best_match": "string or null",
-            "confidence": "number",
-            "candidates": "array of { hash, score }"
-          }
-        },
-        "path_registered": {
-          "description": "New unique path observed",
-          "payload": {
-            "hops": "array of prefixes",
-            "resolved_nodes": "array of { prefix, hash, confidence }",
-            "is_canonical": "boolean"
-          }
-        },
-        "tx_delay_recommendation": {
-          "description": "TX delay recommendation updated for a node",
-          "payload": {
-            "hash": "string",
-            "network_role": "edge|relay|hub|backbone",
-            "flood_delay_sec": "number",
-            "direct_delay_sec": "number",
-            "collision_risk": "number",
-            "confidence": "string"
-          }
-        }
+      "GET /api/packets/{hash}": {
+        "description": "Single packet by hash",
+        "response": "Packet object or 404",
+        "status": "EXISTS as packet_by_hash"
       }
     },
 
-    "neighbors": {
-      "description": "Real-time neighbor/contact updates",
-      "rationale": "Push neighbor changes as ADVERTs arrive. Server detects zero-hop contacts from path analysis.",
+    "phase_3_neighbors": {
+      "description": "Contact/neighbor management with zero-hop detection",
 
-      "subscribe_options": {
-        "types": { "type": "array", "default": ["all"], "description": "Contact types: repeater, companion, room_server, all" },
-        "include_expired": { "type": "boolean", "default": false },
-        "include_signal_history": { "type": "boolean", "default": false }
-      },
-
-      "initial_state": {
-        "description": "Full neighbor list on subscription",
-        "payload": {
-          "neighbors": "array of NeighborInfo objects",
-          "zero_hop_contacts": "array of QuickNeighbor objects (direct RF)",
-          "stats": {
+      "GET /api/neighbors": {
+        "description": "List all known neighbors with optional filtering",
+        "params": {
+          "type": {"type": "string", "enum": ["repeater", "companion", "room_server", "client"], "description": "Filter by contact type"},
+          "status": {"type": "string", "enum": ["active", "stale", "expired"]},
+          "zero_hop": {"type": "boolean", "description": "Only direct RF contacts"}
+        },
+        "response": {
+          "neighbors": [{
+            "hash": "string",
+            "name": "string",
+            "contact_type": "string",
+            "last_seen": "integer - Unix timestamp",
+            "advert_count": "integer",
+            "is_zero_hop": "boolean",
+            "avg_rssi": "integer or null",
+            "avg_snr": "number or null",
+            "location": {"lat": "number", "lon": "number"}
+          }],
+          "counts": {
             "total": "integer",
             "repeaters": "integer",
             "companions": "integer",
             "room_servers": "integer",
-            "zero_hop_count": "integer"
-          }
-        }
-      },
-
-      "events": {
-        "neighbor_discovered": {
-          "description": "New neighbor seen for first time",
-          "payload": {
-            "neighbor": "NeighborInfo object",
-            "is_zero_hop": "boolean"
+            "zero_hop": "integer"
           }
         },
-        "neighbor_updated": {
-          "description": "Neighbor info changed (ADVERT received)",
-          "payload": {
-            "hash": "string",
-            "updates": {
-              "advert_count": "integer",
-              "last_seen": "timestamp",
-              "rssi": "integer (if zero-hop)",
-              "snr": "number (if zero-hop)"
-            }
-          }
+        "status": "PARTIAL - need to add zero_hop tracking",
+        "zero_hop_logic": "A neighbor is zero-hop if we received ADVERT packets from them with path_len=0 (DIRECT route) or path_len<=1 (FLOOD route)"
+      },
+
+      "DELETE /api/neighbors/{hash}": {
+        "description": "Hide neighbor from display",
+        "status": "EXISTS as DELETE /api/advert/:id"
+      },
+
+      "POST /api/neighbors/{hash}/ping": {
+        "description": "Ping specific neighbor",
+        "response": {
+          "success": "boolean",
+          "rtt_ms": "number",
+          "rssi": "integer",
+          "snr": "number"
         },
-        "neighbor_status_changed": {
-          "description": "Neighbor status changed (active/stale/expired)",
-          "payload": {
-            "hash": "string",
-            "old_status": "string",
-            "new_status": "string"
-          }
-        },
-        "zero_hop_detected": {
-          "description": "Direct RF contact detected from packet path",
-          "payload": {
-            "hash": "string",
-            "count": "integer",
-            "avg_rssi": "number",
-            "avg_snr": "number"
-          }
-        },
-        "neighbor_removed": {
-          "description": "Neighbor hidden by user",
-          "payload": { "hash": "string" }
-        }
+        "status": "EXISTS as ping_neighbor"
       }
     },
 
-    "lbt": {
-      "description": "Listen Before Talk statistics stream",
-      "rationale": "Push LBT metrics as transmitted packets accumulate. Server computes retry rates, backoff stats, collision risk.",
-
-      "subscribe_options": {
-        "include_hourly_breakdown": { "type": "boolean", "default": true }
-      },
-
-      "initial_state": {
-        "description": "LBT stats snapshot on subscription",
-        "payload": {
-          "total_packets_with_lbt": "integer",
-          "packets_with_retries": "integer",
-          "retry_rate_percent": "number",
-          "avg_retries": "number",
-          "channel_busy_count": "integer",
-          "channel_busy_rate_percent": "number",
-          "collision_risk_percent": "number",
-          "backoff": {
-            "avg_ms": "number",
-            "max_ms": "number",
-            "total_ms": "number"
-          },
-          "hourly_breakdown": "array of hourly LBT stats"
-        }
-      },
-
-      "events": {
-        "lbt_stats_updated": {
-          "description": "LBT statistics changed",
-          "payload": {
-            "retry_rate_percent": "number",
-            "channel_busy_rate_percent": "number",
-            "collision_risk_percent": "number",
-            "delta": {
-              "packets_with_retries": "integer",
-              "channel_busy_count": "integer"
-            }
-          }
-        },
-        "channel_busy": {
-          "description": "Channel busy event occurred on TX",
-          "payload": {
-            "packet_hash": "string",
-            "attempts": "integer",
-            "total_backoff_ms": "number"
-          }
-        },
-        "high_collision_risk": {
-          "description": "Collision risk exceeded threshold",
-          "payload": {
-            "collision_risk_percent": "number",
-            "threshold": "number"
-          }
-        }
-      }
-    },
-
-    "logs": {
-      "description": "Real-time log streaming",
-      "rationale": "Stream logs as they're written. More efficient than polling log files.",
-
-      "subscribe_options": {
-        "level": { "type": "string", "default": "INFO", "enum": ["DEBUG", "INFO", "WARNING", "ERROR"] },
-        "max_initial": { "type": "integer", "default": 100, "description": "Max log lines in initial state" }
-      },
-
-      "initial_state": {
-        "payload": {
-          "logs": "array of { timestamp, level, message }",
-          "current_level": "string"
-        }
-      },
-
-      "events": {
-        "log_entry": {
-          "description": "New log entry",
-          "payload": {
-            "timestamp": "integer",
-            "level": "string",
-            "message": "string",
-            "source": "string (optional)"
-          }
-        },
-        "log_level_changed": {
-          "description": "Log level changed via API",
-          "payload": { "level": "string" }
-        }
-      }
-    },
-
-    "hardware": {
-      "description": "Hardware statistics stream",
-      "rationale": "Push hardware stats periodically (every 5s) rather than polling.",
-
-      "subscribe_options": {
-        "interval_seconds": { "type": "integer", "default": 5, "min": 1, "max": 60 }
-      },
-
-      "initial_state": {
-        "payload": {
-          "cpu_percent": "number",
-          "memory_percent": "number",
-          "disk_percent": "number",
-          "temperatures": "array of { label, celsius }",
-          "load_average": "array of 3 numbers"
-        }
-      },
-
-      "events": {
-        "hardware_stats": {
-          "description": "Periodic hardware stats update",
-          "payload": {
-            "cpu_percent": "number",
-            "memory_percent": "number",
-            "disk_percent": "number",
-            "temperatures": "array",
-            "load_average": "array"
-          }
-        },
-        "temperature_alert": {
-          "description": "Temperature exceeded threshold",
-          "payload": {
-            "label": "string",
-            "celsius": "number",
-            "threshold": "number"
-          }
-        }
-      }
-    },
-
-    "noise_floor": {
-      "description": "Real-time noise floor updates with anomaly detection",
-      "rationale": "Push noise floor readings as they're sampled. Server-side anomaly detection identifies interference patterns that correlate with reduced packet activity.",
-
-      "subscribe_options": {
-        "include_anomalies": { "type": "boolean", "default": true, "description": "Include anomaly detection events" },
-        "anomaly_config": {
-          "baseline_dbm": { "type": "number", "default": -107, "description": "Baseline noise floor threshold (dBm)" },
-          "spike_dbm": { "type": "number", "default": -100, "description": "Spike threshold (dBm)" },
-          "min_sequence_length": { "type": "integer", "default": 16, "description": "Minimum consecutive samples for anomaly" }
-        }
-      },
-
-      "initial_state": {
-        "description": "Noise floor history and current anomalies on subscription",
-        "payload": {
-          "current_dbm": "number",
-          "history_24h": "array of { timestamp, noise_floor_dbm }",
-          "thresholds": {
-            "median": "number",
-            "p90": "number",
-            "p95": "number",
-            "p99": "number"
-          },
-          "active_anomalies": "array of NoiseFloorAnomaly objects"
-        }
-      },
-
-      "events": {
-        "noise_floor_reading": {
-          "description": "New noise floor reading",
-          "payload": {
-            "timestamp": "integer",
-            "noise_floor_dbm": "number",
-            "trend": "up|down|stable"
-          }
-        },
-        "anomaly_started": {
-          "description": "New noise floor anomaly detected (elevated interference)",
-          "payload": {
-            "start_ts": "integer",
-            "peak_value": "number",
-            "severity": "moderate|severe|critical"
-          }
-        },
-        "anomaly_ended": {
-          "description": "Noise floor anomaly ended (returned to baseline)",
-          "payload": {
-            "start_ts": "integer",
-            "end_ts": "integer",
-            "duration_seconds": "integer",
-            "avg_value": "number",
-            "severity": "string"
-          }
-        },
-        "thresholds_updated": {
-          "description": "Statistical thresholds recalculated (hourly)",
-          "payload": {
-            "median": "number",
-            "p90": "number",
-            "p95": "number",
-            "p99": "number"
-          }
-        }
-      }
-    },
-
-    "config": {
-      "description": "Real-time configuration change notifications",
-      "rationale": "Push config changes made via other clients or CLI. Keeps all connected dashboards in sync.",
-
-      "subscribe_options": {},
-
-      "initial_state": {
-        "payload": {
-          "radio": "current radio configuration",
-          "repeater": "current repeater settings (mode, delays, etc.)",
-          "duty_cycle": "duty cycle configuration",
-          "web": "web server configuration"
-        }
-      },
-
-      "events": {
-        "radio_config_changed": {
-          "description": "Radio configuration updated",
-          "payload": {
-            "changed_fields": "array of field names",
-            "new_values": "object with new field values",
-            "requires_restart": "boolean"
-          }
-        },
-        "mode_changed": {
-          "description": "Operating mode changed (forward/monitor)",
-          "payload": {
-            "old_mode": "string",
-            "new_mode": "string"
-          }
-        },
-        "duty_cycle_changed": {
-          "description": "Duty cycle settings changed",
-          "payload": {
-            "enforcement_enabled": "boolean",
-            "max_airtime_percent": "number"
-          }
-        },
-        "identity_changed": {
-          "description": "Identity created/updated/deleted",
-          "payload": {
-            "action": "created|updated|deleted",
-            "identity_name": "string",
-            "identity_type": "repeater|room_server"
-          }
-        }
-      }
-    }
-  },
-
-  "request_actions": {
-    "description": "One-off requests via WebSocket (alternative to REST for actions)",
-
-    "get_packet": {
-      "description": "Fetch single packet by hash",
-      "params": {
-        "hash": "string (required)",
-        "include_duplicates": "boolean",
-        "include_path_analysis": "boolean"
-      },
-      "response": {
-        "packet": "Packet object",
-        "duplicates": "array (optional)",
-        "path_analysis": "object (optional)"
-      }
-    },
-
-    "get_packets_history": {
-      "description": "Fetch historical packets (for initial hydration or pagination)",
-      "params": {
-        "limit": { "type": "integer", "default": 100 },
-        "before_timestamp": "integer (optional)",
-        "after_timestamp": "integer (optional)",
-        "filters": "object (same as subscribe filters)"
-      },
-      "response": {
-        "packets": "array",
-        "has_more": "boolean",
-        "oldest_timestamp": "integer"
-      }
-    },
-
-    "resolve_path": {
-      "description": "Resolve packet path using Viterbi HMM",
-      "params": {
-        "path": "array of 2-char prefixes",
-        "packet_hash": "string (optional)",
-        "enable_ghost_detection": "boolean"
-      },
-      "response": {
-        "resolved_nodes": "array of { prefix, hash, confidence, is_ghost }",
-        "total_cost": "number",
-        "path_confidence": "number"
-      }
-    },
-
-    "lookup_prefix": {
-      "description": "Disambiguate a single prefix",
-      "params": {
-        "prefix": "string (required)",
-        "position": "integer (optional)",
-        "adjacent_prefixes": "array (optional)"
-      },
-      "response": {
-        "prefix": "string",
-        "best_match": "string or null",
-        "confidence": "number",
-        "candidates": "array"
-      }
-    },
-
-    "trigger_deep_analysis": {
-      "description": "Trigger full topology recomputation",
-      "params": {
-        "packet_hours": { "type": "integer", "default": 168 },
-        "force_full": { "type": "boolean", "default": false }
-      },
-      "response": {
-        "job_id": "string",
-        "status": "queued|computing"
-      }
-    },
-
-    "get_deep_analysis_status": {
-      "description": "Check status of deep analysis job",
-      "params": { "job_id": "string" },
-      "response": {
-        "status": "queued|computing|complete|failed",
-        "progress_percent": "number",
-        "topology": "TopologySnapshot (if complete)"
-      }
-    },
-
-    "calculate_airtime": {
-      "description": "Calculate airtime for packet configuration",
-      "params": {
-        "payload_bytes": "integer (required)",
-        "spreading_factor": "integer (optional)",
-        "bandwidth_hz": "integer (optional)",
-        "coding_rate": "integer (optional)"
-      },
-      "response": {
-        "airtime_ms": "number",
-        "symbol_time_ms": "number"
-      }
-    },
-
-    "get_sparklines": {
-      "description": "Fetch sparkline data for nodes",
-      "params": {
-        "hashes": "array of strings",
-        "hours": { "type": "integer", "default": 24 },
-        "points": { "type": "integer", "default": 24 }
-      },
-      "response": {
-        "sparklines": "map of hash -> array of { timestamp, rx, tx, rssi, snr }"
-      }
-    },
-
-    "get_noise_floor_history": {
-      "description": "Fetch noise floor history for charts and anomaly detection",
-      "params": {
-        "hours": { "type": "integer", "default": 24 },
-        "include_anomalies": { "type": "boolean", "default": true }
-      },
-      "response": {
-        "history": "array of { timestamp, noise_floor_dbm }",
-        "anomalies": "array of NoiseFloorAnomaly (if include_anomalies=true)",
-        "thresholds": "statistical thresholds object"
-      }
-    },
-
-    "get_packet_type_stats": {
-      "description": "Get packet type distribution for treemap/pie charts",
-      "params": {
-        "hours": { "type": "integer", "default": 24 },
-        "include_route_breakdown": { "type": "boolean", "default": false }
-      },
-      "response": {
-        "types": "map of type_id -> { name, count, percent }",
-        "route_breakdown": "optional nested breakdown"
-      }
-    },
-
-    "get_network_composition": {
-      "description": "Get breakdown of contact types in the mesh",
-      "params": {},
-      "response": {
-        "repeaters": "integer",
-        "companions": "integer",
-        "room_servers": "integer",
-        "total": "integer",
-        "active_24h": "integer"
-      }
-    },
-
-    "get_path_health": {
-      "description": "Get health metrics for observed paths",
-      "params": {
-        "source_hash": "string (optional)",
-        "dest_hash": "string (optional)",
-        "min_observations": { "type": "integer", "default": 3 }
-      },
-      "response": {
-        "paths": "array of { hops, health_score, weakest_link, observation_count, trend, estimated_latency_ms }",
-        "canonical_paths": "map of endpoint_pair -> best path"
-      }
-    },
-
-    "send_advert": {
-      "description": "Trigger ADVERT broadcast",
-      "params": {},
-      "response": { "success": "boolean" }
-    },
-
-    "set_mode": {
-      "description": "Set forward/monitor mode",
-      "params": { "mode": "forward|monitor" },
-      "response": { "success": "boolean", "mode": "string" }
-    },
-
-    "set_duty_cycle": {
-      "description": "Enable/disable duty cycle enforcement",
-      "params": { "enabled": "boolean" },
-      "response": { "success": "boolean" }
-    },
-
-    "set_log_level": {
-      "description": "Change log level",
-      "params": { "level": "DEBUG|INFO|WARNING|ERROR" },
-      "response": { "success": "boolean" }
-    },
-
-    "hide_neighbor": {
-      "description": "Hide a neighbor from display",
-      "params": { "hash": "string" },
-      "response": { "success": "boolean" }
-    },
-
-    "ping_neighbor": {
-      "description": "Send ping to neighbor",
-      "params": { "hash": "string", "timeout": "integer (default 10)" },
-      "response": { "success": "boolean", "rtt_ms": "number", "snr_db": "number", "rssi": "integer", "path": "array" }
-    },
-
-    "update_radio_config": {
-      "description": "Update radio configuration (frequency, SF, bandwidth, power, delays)",
-      "params": {
-        "frequency_mhz": "number (optional)",
-        "bandwidth_khz": "number (optional)",
-        "spreading_factor": "integer (optional, 5-12)",
-        "coding_rate": "integer (optional, 5-8)",
-        "tx_power": "integer (optional, dBm)",
-        "tx_delay_factor": "number (optional, 0.0-5.0)",
-        "direct_tx_delay_factor": "number (optional)",
-        "rx_delay_base": "number (optional)",
-        "node_name": "string (optional)",
-        "latitude": "number (optional)",
-        "longitude": "number (optional)",
-        "max_flood_hops": "integer (optional, 0-64)",
-        "advert_interval_minutes": "integer (optional, 0 or 60-240)"
-      },
-      "response": { "applied": "array of field names", "persisted": "boolean", "live_update": "boolean", "warnings": "array (optional)" }
-    },
-
-    "restart_service": {
-      "description": "Restart the pymc-repeater systemd service",
-      "params": {},
-      "response": { "success": "boolean", "message": "string" }
-    }
-  },
-
-  "rest_endpoints_retained": {
-    "description": "REST endpoints retained for specific use cases (initial hydration, file downloads, compatibility)",
-
-    "GET /api/stats": {
-      "description": "Initial stats fetch (for non-WebSocket fallback)",
-      "status": "EXISTING - Unchanged"
-    },
-
-    "GET /api/recent_packets": {
-      "description": "Fallback for initial packet load",
-      "status": "EXISTING - Unchanged"
-    },
-
-    "GET /api/radio_presets": {
-      "description": "Radio preset list",
-      "status": "EXISTING - Unchanged"
-    },
-
-    "POST /api/update_radio_config": {
-      "description": "Update radio configuration",
-      "status": "EXISTING - Unchanged (actions via REST are fine)"
-    },
-
-    "GET /api/identities": {
-      "description": "Identity management",
-      "status": "EXISTING - Unchanged"
-    },
-
-    "note": "All other existing REST endpoints remain available for backward compatibility and non-WebSocket clients.",
-
-    "identity_management": {
-      "description": "Identity CRUD operations (repeater + room servers)",
-      "endpoints": {
-        "GET /api/identities": "List all identities",
-        "GET /api/identity?name=X": "Get specific identity by name",
-        "POST /api/create_identity": "Create new identity (auto-generates key if not provided)",
-        "PUT /api/update_identity": "Update existing identity",
-        "DELETE /api/delete_identity?name=X": "Delete an identity",
-        "POST /api/send_room_server_advert": "Send ADVERT for a room server identity"
-      },
-      "status": "EXISTING - feat/identity branch"
-    },
-
-    "acl_management": {
-      "description": "Access Control List for authenticated clients",
-      "endpoints": {
-        "GET /api/acl_info": "ACL config and stats for all identities",
-        "GET /api/acl_clients": "List authenticated clients (optionally by identity)",
-        "POST /api/acl_remove_client": "Remove client from ACL",
-        "GET /api/acl_stats": "Overall ACL statistics"
-      },
-      "status": "EXISTING"
-    },
-
-    "room_server": {
-      "description": "Room server message and client management",
-      "endpoints": {
-        "GET /api/room_messages": "Get messages from a room",
-        "POST /api/room_post_message": "Post message to a room",
-        "GET /api/room_stats": "Room statistics (one or all rooms)",
-        "GET /api/room_clients": "Clients synced to a room",
-        "DELETE /api/room_message": "Delete specific message",
-        "DELETE /api/room_messages": "Clear all messages in room"
-      },
-      "status": "EXISTING"
-    },
-
-    "transport_keys": {
-      "description": "Transport key management for encrypted channels",
-      "endpoints": {
-        "GET /api/transport_keys": "List all transport keys",
-        "POST /api/transport_keys": "Create new transport key",
-        "GET /api/transport_key/:id": "Get specific transport key",
-        "PUT /api/transport_key/:id": "Update transport key",
-        "DELETE /api/transport_key/:id": "Delete transport key"
-      },
-      "status": "EXISTING"
-    },
-
-    "api_tokens": {
-      "description": "Machine-to-machine authentication tokens",
-      "endpoints": {
-        "GET /auth/tokens": "List all API tokens",
-        "POST /auth/tokens": "Create new API token",
-        "DELETE /auth/tokens/:id": "Revoke API token"
-      },
-      "status": "EXISTING"
-    },
-
-    "mesh_policy": {
-      "description": "Mesh routing policies",
-      "endpoints": {
-        "POST /api/global_flood_policy": "Set global flood allow/deny policy"
-      },
-      "status": "EXISTING"
-    },
-
-    "duty_cycle_config": {
-      "description": "Duty cycle enforcement configuration",
-      "endpoints": {
-        "POST /api/update_duty_cycle_config": "Update max_airtime_percent and enforcement_enabled"
-      },
-      "status": "EXISTING"
-    },
-
-    "web_config": {
-      "description": "Web server configuration",
-      "endpoints": {
-        "POST /api/update_web_config": "Update CORS and web_path settings",
-        "GET /api/check_pymc_console": "Check if pyMC Console is installed",
-        "GET /api/check_default_frontend": "Check if default Vue.js frontend exists"
-      },
-      "status": "EXISTING"
-    },
-
-    "neighbor_management": {
-      "description": "Neighbor/advert operations",
-      "endpoints": {
-        "DELETE /api/advert/:id": "Delete/hide a neighbor",
-        "POST /api/ping_neighbor": "Ping neighbor for RTT/SNR",
-        "GET /api/adverts_by_contact_type": "Filter adverts by type"
-      },
-      "status": "EXISTING"
-    }
-  },
-
-  "database_schema_additions": {
-    "description": "SQLite schema additions to support server-side computation and WebSocket state",
-
-    "tables": {
-      "stats_hourly": {
-        "description": "Pre-aggregated hourly statistics for efficient historical queries",
-        "columns": {
-          "hour_timestamp": "INTEGER PRIMARY KEY",
-          "rx_count": "INTEGER",
-          "tx_count": "INTEGER",
-          "forwarded_count": "INTEGER",
-          "dropped_count": "INTEGER",
-          "avg_rssi": "REAL",
-          "avg_snr": "REAL",
-          "noise_floor_avg": "REAL",
-          "total_airtime_ms": "INTEGER"
-        },
-        "triggers": "INSERT trigger on packets table to update hourly bucket"
-      },
-
-      "topology_edges": {
-        "description": "Materialized topology edges updated incrementally",
-        "columns": {
-          "edge_key": "TEXT PRIMARY KEY (sorted hash pair)",
-          "from_hash": "TEXT",
-          "to_hash": "TEXT",
-          "observation_count": "INTEGER",
-          "certain_count": "INTEGER",
-          "confidence_sum": "REAL",
-          "forward_count": "INTEGER",
-          "reverse_count": "INTEGER",
-          "flood_count": "INTEGER",
-          "direct_count": "INTEGER",
-          "min_hop_distance": "INTEGER",
-          "first_seen": "INTEGER",
-          "last_seen": "INTEGER",
-          "is_hub_connection": "INTEGER"
-        },
-        "indexes": [
-          "CREATE INDEX idx_edges_from ON topology_edges(from_hash)",
-          "CREATE INDEX idx_edges_to ON topology_edges(to_hash)",
-          "CREATE INDEX idx_edges_count ON topology_edges(observation_count DESC)"
-        ]
-      },
-
-      "path_registry": {
-        "description": "Observed packet paths for health analysis",
-        "columns": {
-          "path_signature": "TEXT PRIMARY KEY",
-          "source_hash": "TEXT",
-          "dest_hash": "TEXT",
-          "hops": "TEXT (JSON array)",
-          "hop_count": "INTEGER",
-          "observation_count": "INTEGER",
-          "first_seen": "INTEGER",
-          "last_seen": "INTEGER",
-          "is_canonical": "INTEGER"
-        },
-        "indexes": [
-          "CREATE INDEX idx_paths_endpoints ON path_registry(source_hash, dest_hash)"
-        ]
-      },
-
-      "ghost_clusters": {
-        "description": "Discovered ghost node clusters",
-        "columns": {
-          "prefix": "TEXT PRIMARY KEY",
-          "observation_count": "INTEGER",
-          "first_seen": "INTEGER",
-          "last_seen": "INTEGER",
-          "is_likely_real": "INTEGER",
-          "estimated_lat": "REAL",
-          "estimated_lon": "REAL",
-          "location_variance": "REAL",
-          "anchor_nodes": "TEXT (JSON array)"
-        }
-      },
-
-      "disambiguation_cache": {
-        "description": "Cached prefix disambiguation results",
-        "columns": {
-          "prefix": "TEXT PRIMARY KEY",
-          "best_match_hash": "TEXT",
-          "confidence": "REAL",
-          "is_unambiguous": "INTEGER",
-          "candidates_json": "TEXT",
-          "computed_at": "INTEGER"
-        }
-      },
-
-      "ws_sessions": {
-        "description": "WebSocket session tracking for reconnection support",
-        "columns": {
-          "session_id": "TEXT PRIMARY KEY",
-          "connected_at": "INTEGER",
-          "last_seen": "INTEGER",
-          "subscriptions": "TEXT (JSON array)",
-          "last_seq": "INTEGER"
-        }
-      },
-
-      "event_log": {
-        "description": "Event log for replay on reconnection (circular buffer)",
-        "columns": {
-          "seq": "INTEGER PRIMARY KEY AUTOINCREMENT",
-          "channel": "TEXT",
-          "event_type": "TEXT",
-          "payload": "TEXT (JSON)",
-          "timestamp": "INTEGER"
-        },
-        "retention": "Keep last 10000 events per channel"
-      },
-
-      "noise_floor_history": {
-        "description": "Noise floor readings for anomaly detection and heatmaps",
-        "columns": {
-          "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-          "timestamp": "INTEGER NOT NULL",
-          "noise_floor_dbm": "REAL NOT NULL"
-        },
-        "indexes": [
-          "CREATE INDEX idx_noise_floor_ts ON noise_floor_history(timestamp DESC)"
-        ],
-        "note": "May already exist - verify with existing schema"
-      },
-
-      "sparkline_cache": {
-        "description": "Pre-computed sparkline data per node (updated on packet arrival)",
-        "columns": {
-          "node_hash": "TEXT NOT NULL",
-          "bucket_timestamp": "INTEGER NOT NULL",
-          "rx_count": "INTEGER DEFAULT 0",
-          "tx_count": "INTEGER DEFAULT 0",
-          "avg_rssi": "REAL",
-          "avg_snr": "REAL"
-        },
-        "primary_key": "(node_hash, bucket_timestamp)",
-        "indexes": [
-          "CREATE INDEX idx_sparkline_node ON sparkline_cache(node_hash)"
-        ],
-        "note": "Bucket size = 1 hour, keep 24 hours per node"
-      }
-    }
-  },
-
-  "time_series_architecture": {
-    "description": "Comprehensive time series data handling for historical analysis, charting, and data export",
-
-    "design_principles": [
-      {
-        "principle": "Multi-Resolution Storage",
-        "rationale": "Store data at multiple resolutions (raw, 1min, 5min, hourly, daily) to enable efficient queries at any time scale without computing aggregates on-the-fly."
-      },
-      {
-        "principle": "Continuous Downsampling",
-        "rationale": "Aggregate raw data into coarser buckets on a rolling basis. Keep 24h of raw data, 7d of 1min, 30d of hourly, unlimited daily. Reduces storage while preserving long-term trends."
-      },
-      {
-        "principle": "Time-Based Partitioning",
-        "rationale": "Partition large tables by time period (e.g., packets_2026_01, packets_2026_02) to enable efficient pruning and fast queries within time ranges."
-      },
-      {
-        "principle": "Streaming Aggregation",
-        "rationale": "Update aggregate buckets incrementally as data arrives rather than batch-computing. Enables real-time charts without query latency."
-      }
-    ],
-
-    "retention_policy": {
-      "raw_packets": {
-        "retention": "7 days",
-        "note": "Full packet data including payload for deep analysis"
-      },
-      "minute_buckets": {
-        "retention": "30 days",
-        "fields": ["rx_count", "tx_count", "forwarded_count", "dropped_count", "avg_rssi", "avg_snr", "noise_floor"]
-      },
-      "hourly_buckets": {
-        "retention": "365 days (1 year)",
-        "fields": ["rx_count", "tx_count", "forwarded_count", "dropped_count", "avg_rssi", "avg_snr", "noise_floor_avg", "noise_floor_min", "noise_floor_max", "airtime_ms", "unique_nodes_seen"]
-      },
-      "daily_buckets": {
-        "retention": "unlimited",
-        "fields": ["rx_count", "tx_count", "forwarded_count", "dropped_count", "avg_rssi", "avg_snr", "noise_floor_avg", "airtime_ms", "unique_nodes_seen", "peak_hour"]
-      },
-      "topology_snapshots": {
-        "retention": "90 days",
-        "frequency": "Daily at midnight",
-        "note": "Compressed snapshots of topology state for historical playback"
-      },
-      "neighbor_history": {
-        "retention": "90 days",
-        "note": "Signal quality trends per neighbor over time"
-      }
-    },
-
-    "aggregation_windows": {
-      "live": {
-        "bucket_size": "5 seconds",
-        "retention": "10 minutes",
-        "use_case": "Real-time dashboard (last 10min at high resolution)"
-      },
-      "recent": {
-        "bucket_size": "1 minute",
-        "retention": "24 hours",
-        "use_case": "Recent activity charts, fine-grained analysis"
-      },
-      "short_term": {
-        "bucket_size": "5 minutes",
-        "retention": "7 days",
-        "use_case": "Week view charts, pattern detection"
-      },
-      "medium_term": {
-        "bucket_size": "1 hour",
-        "retention": "365 days",
-        "use_case": "Monthly/yearly trends, seasonal analysis"
-      },
-      "long_term": {
-        "bucket_size": "1 day",
-        "retention": "unlimited",
-        "use_case": "Historical overview, capacity planning"
-      }
-    },
-
-    "time_series_queries": {
-      "get_time_series": {
-        "description": "Flexible time series query for any metric",
+    "phase_4_timeseries": {
+      "description": "Historical data for charts - single flexible endpoint",
+
+      "GET /api/timeseries": {
+        "description": "Time-bucketed metrics for charting",
         "params": {
-          "metric": "string (required) - One of: rx_count, tx_count, forwarded_count, dropped_count, noise_floor, rssi, snr, airtime",
-          "start_time": "integer (required) - Unix timestamp",
-          "end_time": "integer (required) - Unix timestamp",
-          "resolution": "string - auto|5s|1m|5m|1h|1d (default: auto)",
-          "aggregation": "string - sum|avg|min|max|count (default: sum for counts, avg for metrics)",
-          "node_hash": "string (optional) - Filter to specific node",
-          "fill_gaps": "boolean - Fill missing buckets with 0/null (default: true)"
+          "metric": {
+            "type": "string",
+            "required": true,
+            "enum": ["rx", "tx", "forwarded", "dropped", "noise_floor"],
+            "description": "Which metric to retrieve"
+          },
+          "start": {"type": "integer", "required": true, "description": "Unix timestamp"},
+          "end": {"type": "integer", "required": true, "description": "Unix timestamp"},
+          "resolution": {
+            "type": "string",
+            "default": "auto",
+            "enum": ["auto", "1m", "5m", "1h", "1d"],
+            "description": "Bucket size"
+          }
         },
         "response": {
           "metric": "string",
-          "resolution": "string (actual resolution used)",
-          "buckets": "array of { timestamp, value, sample_count }",
+          "resolution": "string - actual resolution used",
+          "buckets": [{"ts": "integer", "value": "number"}],
           "summary": {
             "total": "number",
             "avg": "number",
@@ -1352,1372 +436,503 @@
             "max": "number"
           }
         },
-        "notes": [
-          "Resolution 'auto' selects appropriate bucket size based on time range",
-          "< 1 hour: 5s buckets, < 24h: 1m buckets, < 7d: 5m buckets, < 30d: 1h buckets, else: 1d buckets"
-        ]
+        "auto_resolution_logic": {
+          "under_1_hour": "1m buckets",
+          "under_24_hours": "5m buckets",
+          "under_7_days": "1h buckets",
+          "over_7_days": "1d buckets"
+        },
+        "status": "NEW - replaces multiple chart endpoints"
       },
 
-      "get_multi_series": {
-        "description": "Query multiple metrics in one request for correlated charts",
+      "GET /api/stats/bucketed": {
+        "description": "Pre-bucketed packet statistics for dashboard charts",
         "params": {
-          "metrics": "array of metric names (required)",
-          "start_time": "integer (required)",
-          "end_time": "integer (required)",
-          "resolution": "string",
-          "node_hash": "string (optional)"
+          "hours": {"type": "integer", "default": 24, "max": 168, "description": "Hours of history to return"},
+          "bucket_minutes": {"type": "integer", "default": 60, "enum": [5, 15, 60], "description": "Bucket size in minutes"}
         },
         "response": {
-          "resolution": "string",
-          "series": "map of metric_name -> array of { timestamp, value }"
+          "buckets": [{
+            "timestamp": "integer - bucket start Unix timestamp",
+            "rx_count": "integer",
+            "tx_count": "integer",
+            "forwarded_count": "integer",
+            "dropped_count": "integer"
+          }],
+          "totals": {
+            "rx": "integer",
+            "tx": "integer",
+            "forwarded": "integer",
+            "dropped": "integer"
+          }
         },
-        "use_case": "Overlay RX/TX/forwarded on same chart with aligned timestamps"
-      },
-
-      "get_heatmap_data": {
-        "description": "2D time series for heatmap visualization",
-        "params": {
-          "metric": "string (required)",
-          "start_time": "integer",
-          "end_time": "integer",
-          "x_resolution": "string - Hour of day (0-23)",
-          "y_resolution": "string - Day of week (0-6)"
-        },
-        "response": {
-          "grid": "2D array [day][hour] of values",
-          "min_value": "number",
-          "max_value": "number"
-        },
-        "use_case": "Activity heatmap showing busiest hours/days"
-      },
-
-      "get_comparison_series": {
-        "description": "Compare time periods (this week vs last week)",
-        "params": {
-          "metric": "string",
-          "current_start": "integer",
-          "current_end": "integer",
-          "compare_start": "integer",
-          "compare_end": "integer",
-          "resolution": "string"
-        },
-        "response": {
-          "current": "array of { timestamp, value }",
-          "comparison": "array of { timestamp, value }",
-          "change_percent": "number (overall change)"
-        }
-      },
-
-      "get_anomaly_detection": {
-        "description": "Detect anomalies in time series using statistical methods",
-        "params": {
-          "metric": "string",
-          "start_time": "integer",
-          "end_time": "integer",
-          "sensitivity": "number (0-1, default 0.5) - Higher = more anomalies detected",
-          "method": "string - zscore|iqr|mad (default: zscore)"
-        },
-        "response": {
-          "anomalies": "array of { timestamp, value, expected_value, deviation_score, type: spike|dip }",
-          "baseline": { "mean": "number", "std": "number" }
-        }
+        "status": "NEW - for dashboard packet type charts",
+        "note": "Alternative to generic /api/timeseries for simpler dashboard use case"
       }
     },
 
-    "database_tables": {
-      "stats_5s": {
-        "description": "Live 5-second buckets (rolling 10 minutes)",
-        "columns": {
-          "bucket_ts": "INTEGER PRIMARY KEY",
-          "rx_count": "INTEGER",
-          "tx_count": "INTEGER",
-          "forwarded_count": "INTEGER",
-          "dropped_count": "INTEGER"
-        },
-        "retention_trigger": "DELETE WHERE bucket_ts < (now - 600)"
+    "phase_5_actions": {
+      "description": "Operational commands",
+
+      "POST /api/mode": {
+        "description": "Set operating mode",
+        "request": {"mode": "forward|monitor"},
+        "status": "EXISTS as set_mode"
       },
-      "stats_1m": {
-        "description": "1-minute buckets (rolling 24 hours)",
+
+      "POST /api/duty_cycle": {
+        "description": "Enable/disable duty cycle",
+        "request": {"enabled": "boolean"},
+        "status": "EXISTS as set_duty_cycle"
+      },
+
+      "POST /api/radio": {
+        "description": "Update radio configuration",
+        "request": {
+          "frequency_hz": "integer (optional)",
+          "tx_power_dbm": "integer (optional)",
+          "spreading_factor": "integer (optional)",
+          "bandwidth_hz": "integer (optional)"
+        },
+        "response": {
+          "applied": "array - fields applied immediately",
+          "pending_restart": "array - fields requiring restart",
+          "warnings": "array of strings"
+        },
+        "status": "EXISTS as update_radio_config"
+      },
+
+      "POST /api/restart": {
+        "description": "Restart the repeater service",
+        "status": "EXISTS as restart_service"
+      },
+
+      "GET /api/radio_presets": {
+        "description": "Available radio configuration presets",
+        "response": {
+          "presets": [{
+            "name": "string - preset identifier",
+            "description": "string - human readable description",
+            "frequency_hz": "integer",
+            "tx_power_dbm": "integer",
+            "spreading_factor": "integer",
+            "bandwidth_hz": "integer",
+            "coding_rate": "integer"
+          }]
+        },
+        "status": "EXISTS"
+      },
+
+      "POST /api/log_level": {
+        "description": "Set system logging level",
+        "request": {"level": "string - DEBUG|INFO|WARNING|ERROR"},
+        "response": {"success": "boolean", "level": "string - applied level"},
+        "status": "EXISTS as set_log_level"
+      },
+
+      "POST /api/flood_policy": {
+        "description": "Set global flood routing policy",
+        "request": {"allow_all": "boolean - if true, forward all floods; if false, apply filtering rules"},
+        "response": {"success": "boolean"},
+        "status": "EXISTS as global_flood_policy"
+      },
+
+      "GET /api/duty_cycle": {
+        "description": "Get current duty cycle configuration",
+        "response": {
+          "enabled": "boolean",
+          "max_tx_percent": "number - maximum TX duty cycle percentage",
+          "window_seconds": "integer - measurement window duration",
+          "current_usage_percent": "number - current TX usage in window"
+        },
+        "status": "NEW - extends existing set_duty_cycle"
+      },
+
+      "POST /api/duty_cycle": {
+        "description": "Update duty cycle configuration",
+        "request": {
+          "enabled": {"type": "boolean", "description": "Enable/disable duty cycle limiting"},
+          "max_tx_percent": {"type": "number", "description": "Maximum TX percentage (optional)"},
+          "window_seconds": {"type": "integer", "description": "Measurement window (optional)"}
+        },
+        "response": {"success": "boolean"},
+        "status": "EXISTS as set_duty_cycle - expanded request body"
+      }
+    },
+
+    "phase_6_identity": {
+      "description": "Multi-identity and ACL management",
+      "status": "EXISTS - no changes needed",
+      "endpoints": [
+        "GET /api/identities",
+        "POST /api/identities",
+        "GET /api/identities/{name}",
+        "PUT /api/identities/{name}",
+        "DELETE /api/identities/{name}",
+        "GET /api/acl",
+        "GET /api/acl/clients",
+        "GET /api/acl/stats",
+        "DELETE /api/acl/clients/{public_key}"
+      ],
+
+      "POST /api/identities/{name}/advert": {
+        "description": "Send ADVERT for a specific identity (e.g., room server)",
+        "response": {"success": "boolean"},
+        "status": "EXISTS as send_room_server_advert - generalized"
+      }
+    },
+
+    "phase_6b_transport_keys": {
+      "description": "Transport key management for encrypted mesh communication",
+      "status": "EXISTS - no changes needed",
+
+      "GET /api/transport_keys": {
+        "description": "List all transport keys",
+        "response": {
+          "keys": [{
+            "id": "string - unique key identifier",
+            "name": "string - human readable name",
+            "created": "integer - Unix timestamp",
+            "last_used": "integer or null - Unix timestamp"
+          }]
+        }
+      },
+
+      "POST /api/transport_keys": {
+        "description": "Create a new transport key",
+        "request": {
+          "name": "string - human readable name"
+        },
+        "response": {
+          "id": "string - generated key ID",
+          "key": "string - the actual key (only returned on creation)"
+        }
+      },
+
+      "GET /api/transport_keys/{id}": {
+        "description": "Get transport key details (not the key itself)",
+        "response": {
+          "id": "string",
+          "name": "string",
+          "created": "integer",
+          "last_used": "integer or null"
+        }
+      },
+
+      "PUT /api/transport_keys/{id}": {
+        "description": "Update transport key metadata",
+        "request": {"name": "string"},
+        "response": {"success": "boolean"}
+      },
+
+      "DELETE /api/transport_keys/{id}": {
+        "description": "Delete a transport key",
+        "response": {"success": "boolean"}
+      }
+    },
+
+    "phase_6c_api_tokens": {
+      "description": "API token management for authentication",
+      "status": "EXISTS - no changes needed",
+
+      "GET /api/tokens": {
+        "description": "List all API tokens",
+        "response": {
+          "tokens": [{
+            "id": "string - token identifier",
+            "name": "string - human readable name",
+            "created": "integer - Unix timestamp",
+            "last_used": "integer or null",
+            "expires": "integer or null - Unix timestamp if expiring"
+          }]
+        }
+      },
+
+      "POST /api/tokens": {
+        "description": "Create a new API token",
+        "request": {
+          "name": "string - human readable name",
+          "expires_days": "integer or null - days until expiration (null = never)"
+        },
+        "response": {
+          "id": "string",
+          "token": "string - the actual token (only returned on creation)"
+        }
+      },
+
+      "DELETE /api/tokens/{id}": {
+        "description": "Revoke an API token",
+        "response": {"success": "boolean"}
+      }
+    },
+
+    "phase_7_rooms": {
+      "description": "Room server message management",
+      "status": "EXISTS - no changes needed",
+      "endpoints": [
+        "GET /api/rooms",
+        "GET /api/rooms/{name}/messages",
+        "POST /api/rooms/{name}/messages",
+        "DELETE /api/rooms/{name}/messages/{id}",
+        "DELETE /api/rooms/{name}/messages"
+      ],
+
+      "GET /api/rooms/{name}/stats": {
+        "description": "Room statistics",
+        "response": {
+          "message_count": "integer",
+          "client_count": "integer",
+          "last_activity": "integer - Unix timestamp"
+        },
+        "status": "EXISTS as room_stats"
+      },
+
+      "GET /api/rooms/{name}/clients": {
+        "description": "List clients synced to a room",
+        "response": {
+          "clients": [{
+            "hash": "string",
+            "name": "string",
+            "last_sync": "integer - Unix timestamp"
+          }]
+        },
+        "status": "EXISTS as room_clients"
+      }
+    },
+
+    "phase_8_frontend": {
+      "description": "Frontend/web UI configuration - pymc_console specific",
+      "status": "EXISTS - pymc_console overlay features",
+
+      "GET /api/web_config": {
+        "description": "Get current web UI configuration",
+        "response": {
+          "active_frontend": "string - 'pymc_console' or 'default'",
+          "pymc_console_installed": "boolean",
+          "default_frontend_installed": "boolean",
+          "web_path": "string - current static file path"
+        }
+      },
+
+      "POST /api/web_config": {
+        "description": "Switch active frontend",
+        "request": {
+          "frontend": "string - 'pymc_console' or 'default'"
+        },
+        "response": {
+          "success": "boolean",
+          "restart_required": "boolean"
+        },
+        "status": "EXISTS as update_web_config"
+      },
+
+      "GET /api/web_config/check": {
+        "description": "Check frontend installation status",
+        "response": {
+          "pymc_console": {"installed": "boolean", "version": "string or null"},
+          "default": {"installed": "boolean"}
+        },
+        "status": "EXISTS as check_pymc_console + check_default_frontend"
+      }
+    }
+  },
+
+  "database_schema": {
+    "description": "Minimal schema additions. Most tables already exist.",
+
+    "existing_tables": {
+      "packets": "Already exists - stores all packet data",
+      "adverts": "Already exists - stores neighbor/contact info"
+    },
+
+    "new_tables": {
+      "zero_hop_contacts": {
+        "description": "Track direct RF contacts for zero-hop detection",
         "columns": {
-          "bucket_ts": "INTEGER PRIMARY KEY",
+          "node_hash": "TEXT PRIMARY KEY",
+          "packet_count": "INTEGER - number of zero-hop packets received",
+          "rssi_sum": "INTEGER - for calculating average",
+          "snr_sum": "REAL - for calculating average",
+          "last_seen": "INTEGER - Unix timestamp"
+        },
+        "sql": "CREATE TABLE IF NOT EXISTS zero_hop_contacts (node_hash TEXT PRIMARY KEY, packet_count INTEGER DEFAULT 0, rssi_sum INTEGER DEFAULT 0, snr_sum REAL DEFAULT 0, last_seen INTEGER);"
+      },
+
+      "stats_buckets": {
+        "description": "Pre-aggregated time buckets for efficient chart queries",
+        "columns": {
+          "bucket_ts": "INTEGER - bucket start timestamp",
+          "resolution": "TEXT - '1m', '5m', '1h', '1d'",
           "rx_count": "INTEGER",
           "tx_count": "INTEGER",
           "forwarded_count": "INTEGER",
           "dropped_count": "INTEGER",
-          "avg_rssi": "REAL",
-          "avg_snr": "REAL",
-          "noise_floor": "REAL"
-        },
-        "retention_trigger": "DELETE WHERE bucket_ts < (now - 86400)"
-      },
-      "stats_5m": {
-        "description": "5-minute buckets (rolling 7 days)",
-        "columns": {
-          "bucket_ts": "INTEGER PRIMARY KEY",
-          "rx_count": "INTEGER",
-          "tx_count": "INTEGER",
-          "forwarded_count": "INTEGER",
-          "dropped_count": "INTEGER",
-          "avg_rssi": "REAL",
-          "avg_snr": "REAL",
           "noise_floor_avg": "REAL",
           "noise_floor_min": "REAL",
           "noise_floor_max": "REAL"
         },
-        "retention_trigger": "DELETE WHERE bucket_ts < (now - 604800)"
+        "sql": "CREATE TABLE IF NOT EXISTS stats_buckets (bucket_ts INTEGER, resolution TEXT, rx_count INTEGER DEFAULT 0, tx_count INTEGER DEFAULT 0, forwarded_count INTEGER DEFAULT 0, dropped_count INTEGER DEFAULT 0, noise_floor_avg REAL, noise_floor_min REAL, noise_floor_max REAL, PRIMARY KEY (bucket_ts, resolution));",
+        "index": "CREATE INDEX IF NOT EXISTS idx_stats_resolution ON stats_buckets(resolution, bucket_ts DESC);"
       },
-      "stats_hourly": {
-        "description": "Hourly buckets (365 days)",
-        "note": "Already defined in database_schema_additions"
-      },
-      "stats_daily": {
-        "description": "Daily buckets (unlimited)",
-        "columns": {
-          "day_ts": "INTEGER PRIMARY KEY",
-          "rx_count": "INTEGER",
-          "tx_count": "INTEGER",
-          "forwarded_count": "INTEGER",
-          "dropped_count": "INTEGER",
-          "avg_rssi": "REAL",
-          "avg_snr": "REAL",
-          "noise_floor_avg": "REAL",
-          "airtime_total_ms": "INTEGER",
-          "unique_nodes": "INTEGER",
-          "peak_hour": "INTEGER"
-        }
-      },
-      "neighbor_signal_history": {
-        "description": "Per-neighbor signal quality over time",
-        "columns": {
-          "node_hash": "TEXT NOT NULL",
-          "hour_ts": "INTEGER NOT NULL",
-          "packet_count": "INTEGER",
-          "avg_rssi": "REAL",
-          "avg_snr": "REAL",
-          "rssi_variance": "REAL",
-          "snr_variance": "REAL"
-        },
-        "primary_key": "(node_hash, hour_ts)",
-        "use_case": "Signal degradation detection, link quality trends"
-      },
-      "topology_daily_snapshot": {
-        "description": "Compressed daily topology snapshots for historical playback",
-        "columns": {
-          "day_ts": "INTEGER PRIMARY KEY",
-          "edges_json": "TEXT (compressed JSON)",
-          "nodes_json": "TEXT (compressed JSON)",
-          "hub_nodes": "TEXT (JSON array)",
-          "gateway_nodes": "TEXT (JSON array)",
-          "snapshot_size_bytes": "INTEGER"
-        },
-        "use_case": "Topology playback slider, network evolution visualization"
-      }
-    },
 
-    "downsampling_triggers": {
-      "description": "Background jobs to aggregate and prune data",
-      "jobs": [
-        {
-          "name": "aggregate_5s_to_1m",
-          "frequency": "Every 1 minute",
-          "logic": "Sum 5s buckets into 1m bucket, prune 5s buckets older than 10min"
+      "noise_floor_samples": {
+        "description": "Raw noise floor readings for detailed analysis",
+        "columns": {
+          "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+          "timestamp": "INTEGER",
+          "value_dbm": "REAL"
         },
-        {
-          "name": "aggregate_1m_to_5m",
-          "frequency": "Every 5 minutes",
-          "logic": "Sum 1m buckets into 5m bucket, prune 1m buckets older than 24h"
-        },
-        {
-          "name": "aggregate_5m_to_hourly",
-          "frequency": "Every hour (on the hour)",
-          "logic": "Sum 5m buckets into hourly bucket, prune 5m buckets older than 7d"
-        },
-        {
-          "name": "aggregate_hourly_to_daily",
-          "frequency": "Daily at 00:05 UTC",
-          "logic": "Sum hourly buckets into daily bucket"
-        },
-        {
-          "name": "snapshot_topology",
-          "frequency": "Daily at 00:00 UTC",
-          "logic": "Save compressed topology state to topology_daily_snapshot"
-        },
-        {
-          "name": "prune_hourly",
-          "frequency": "Daily at 03:00 UTC",
-          "logic": "Delete hourly buckets older than 365 days"
-        }
-      ]
-    },
-
-    "export_formats": {
-      "csv": {
-        "endpoint": "GET /api/export/time_series",
-        "params": {
-          "metric": "string",
-          "start_time": "integer",
-          "end_time": "integer",
-          "resolution": "string",
-          "format": "csv"
-        },
-        "response": "text/csv with headers: timestamp,value,sample_count"
-      },
-      "json": {
-        "endpoint": "GET /api/export/time_series",
-        "params": { "format": "json" },
-        "response": "application/json array"
-      },
-      "prometheus": {
-        "endpoint": "GET /metrics",
-        "format": "Prometheus exposition format",
-        "metrics": [
-          "pymc_packets_received_total",
-          "pymc_packets_transmitted_total",
-          "pymc_packets_forwarded_total",
-          "pymc_packets_dropped_total",
-          "pymc_noise_floor_dbm",
-          "pymc_airtime_used_ms",
-          "pymc_neighbors_count"
-        ],
-        "note": "Enables integration with Grafana/Prometheus ecosystem"
+        "sql": "CREATE TABLE IF NOT EXISTS noise_floor_samples (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, value_dbm REAL);",
+        "index": "CREATE INDEX IF NOT EXISTS idx_noise_ts ON noise_floor_samples(timestamp DESC);",
+        "retention": "Keep 24 hours, prune older"
       }
     }
   },
 
-  "pagination_architecture": {
-    "description": "Consistent pagination across all list endpoints for efficient data retrieval",
+  "background_tasks": {
+    "description": "Periodic tasks needed for the system",
 
-    "design_principles": [
-      {
-        "principle": "Cursor-Based Pagination",
-        "rationale": "Use opaque cursors (base64-encoded timestamps/IDs) instead of offset/limit. Handles real-time data insertion without skipping or duplicating items. More efficient for large datasets."
-      },
-      {
-        "principle": "Consistent Response Envelope",
-        "rationale": "All paginated endpoints return the same metadata structure for predictable client handling."
-      },
-      {
-        "principle": "Bidirectional Navigation",
-        "rationale": "Support both forward (newer) and backward (older) pagination for timeline navigation."
-      },
-      {
-        "principle": "Stable Ordering",
-        "rationale": "Always include a tie-breaker (e.g., ID) when sorting by timestamp to ensure deterministic ordering."
-      }
-    ],
-
-    "pagination_params": {
-      "limit": {
-        "type": "integer",
-        "default": 50,
-        "max": 500,
-        "description": "Maximum items per page"
-      },
-      "cursor": {
-        "type": "string",
-        "description": "Opaque cursor from previous response (base64-encoded)"
-      },
-      "direction": {
-        "type": "string",
-        "enum": ["forward", "backward"],
-        "default": "backward",
-        "description": "forward = newer items, backward = older items"
-      },
-      "sort_by": {
-        "type": "string",
-        "default": "timestamp",
-        "description": "Field to sort by (endpoint-specific options)"
-      },
-      "sort_order": {
-        "type": "string",
-        "enum": ["asc", "desc"],
-        "default": "desc"
-      }
-    },
-
-    "pagination_response": {
-      "items": "array - The requested items",
-      "pagination": {
-        "has_more": "boolean - More items available in this direction",
-        "next_cursor": "string|null - Cursor for next page (if has_more)",
-        "prev_cursor": "string|null - Cursor for previous page (if not at start)",
-        "total_count": "integer|null - Total items matching filters (expensive, optional)",
-        "returned_count": "integer - Items in this response"
-      }
-    },
-
-    "cursor_encoding": {
-      "format": "base64(JSON)",
-      "example_decoded": {
-        "ts": 1736934849000,
-        "id": "abc123",
-        "dir": "b"
-      },
-      "note": "Cursor encodes position (timestamp + ID) and direction for stateless server"
-    },
-
-    "paginated_endpoints": {
-      "GET /api/packets": {
-        "sort_options": ["timestamp", "rssi", "snr", "type"],
-        "filter_params": {
-          "types": "array of payload types",
-          "routes": "array of route types",
-          "min_rssi": "integer",
-          "max_rssi": "integer",
-          "src_hash": "string (prefix match)",
-          "transmitted": "boolean",
-          "start_time": "integer",
-          "end_time": "integer"
-        },
-        "example": "GET /api/packets?limit=100&types=4&start_time=1736848449&cursor=eyJ0cyI6MTczNjkzNDg0OTAwMH0="
-      },
-
-      "GET /api/logs": {
-        "sort_options": ["timestamp", "level"],
-        "filter_params": {
-          "level": "string (DEBUG|INFO|WARNING|ERROR)",
-          "search": "string (text search)",
-          "module": "string (logger name)",
-          "start_time": "integer",
-          "end_time": "integer"
-        }
-      },
-
-      "GET /api/neighbors": {
-        "sort_options": ["last_seen", "name", "rssi", "snr", "distance"],
-        "filter_params": {
-          "contact_type": "string (repeater|companion|room_server)",
-          "status": "string (active|stale|expired)",
-          "zero_hop_only": "boolean",
-          "has_location": "boolean"
-        }
-      },
-
-      "GET /api/topology_edges": {
-        "sort_options": ["observation_count", "last_seen", "confidence"],
-        "filter_params": {
-          "min_confidence": "number",
-          "node_hash": "string (edges involving this node)",
-          "is_certain": "boolean"
-        }
-      },
-
-      "GET /api/path_registry": {
-        "sort_options": ["observation_count", "last_seen", "hop_count"],
-        "filter_params": {
-          "source_hash": "string",
-          "dest_hash": "string",
-          "is_canonical": "boolean",
-          "min_observations": "integer"
-        }
-      },
-
-      "GET /api/room_messages": {
-        "sort_options": ["timestamp"],
-        "filter_params": {
-          "room_id": "string (required)",
-          "sender_hash": "string",
-          "search": "string"
-        }
-      }
-    },
-
-    "websocket_pagination": {
-      "description": "Pagination via WebSocket for initial hydration and history fetch",
-      "request_type": "request",
-      "action": "get_page",
-      "params": {
-        "resource": "string (packets|logs|neighbors|edges|paths|messages)",
-        "limit": "integer",
-        "cursor": "string",
-        "direction": "string",
-        "filters": "object"
-      },
-      "response": {
-        "req_id": "string",
-        "items": "array",
-        "pagination": "PaginationResponse object"
-      },
-      "example_request": {
-        "type": "request",
-        "req_id": "page-1",
-        "payload": {
-          "action": "get_page",
-          "params": {
-            "resource": "packets",
-            "limit": 100,
-            "cursor": "eyJ0cyI6MTczNjkzNDg0OTAwMH0=",
-            "direction": "backward",
-            "filters": { "types": [4] }
-          }
-        }
-      }
-    },
-
-    "infinite_scroll_support": {
-      "description": "Optimizations for infinite scroll UX",
-      "recommendations": [
-        "Pre-fetch next page when user scrolls to 80% of current page",
-        "Cache previous pages in memory for instant back-navigation",
-        "Use virtual scrolling for lists > 1000 items",
-        "Debounce scroll events (100ms) to avoid excessive requests"
+    "stats_aggregation": {
+      "description": "Aggregate packet counts into time buckets",
+      "frequency": "Every 60 seconds",
+      "logic": [
+        "1. Count packets in last minute, upsert into stats_buckets with resolution='1m'",
+        "2. Every 5 minutes: roll up 1m buckets into 5m bucket",
+        "3. Every hour: roll up 5m buckets into 1h bucket",
+        "4. Every day at midnight: roll up 1h buckets into 1d bucket",
+        "5. Prune: delete 1m buckets older than 24h, 5m older than 7d"
       ],
-      "frontend_hooks": {
-        "useInfiniteQuery": "React Query / TanStack Query pattern for infinite lists",
-        "useVirtualizer": "@tanstack/react-virtual for virtualized rendering"
-      }
+      "estimated_code": "~50 lines"
     },
 
-    "total_count_optimization": {
-      "description": "total_count is expensive for large tables; use judiciously",
-      "strategies": [
-        "Default: Do not include total_count (save ~50ms per query)",
-        "On explicit request: include_total=true param triggers COUNT(*)",
-        "Cached counts: For common queries, cache count and refresh hourly",
-        "Estimated counts: Use EXPLAIN or pg_class.reltuples for estimates"
-      ]
+    "zero_hop_detection": {
+      "description": "Update zero-hop contact tracking on packet receive",
+      "trigger": "On each ADVERT packet received",
+      "logic": [
+        "1. Check if packet is zero-hop (DIRECT route: path_len=0, FLOOD route: path_len<=1)",
+        "2. If zero-hop, upsert into zero_hop_contacts table",
+        "3. Increment packet_count, add to rssi_sum/snr_sum, update last_seen"
+      ],
+      "estimated_code": "~20 lines"
+    },
+
+    "noise_floor_sampling": {
+      "description": "Already implemented in SX1262 wrapper",
+      "location": "sx1262_wrapper.py _sample_noise_floor()",
+      "change_needed": "Add insert into noise_floor_samples table, broadcast to WebSocket"
     }
   },
 
-  "topology_inference_engine": {
-    "description": "Advanced algorithmic system for inferring complete mesh topology from partial observations. Combines probabilistic graphical models, signal propagation physics, and graph-theoretic analysis to reconstruct network structure from packet path fragments.",
-
-    "design_philosophy": {
-      "core_principle": "Observation Always Wins Over Theory",
-      "rationale": "When high-confidence observed evidence exists (≥80% disambiguation confidence), observations override physics-based models entirely. Real-world evidence takes precedence over theoretical calculations.",
-      "approach": "Multi-layer inference combining deterministic observations (zero-hop contacts) as ground truth anchors, probabilistic path disambiguation, and physics-constrained graph completion."
-    },
-
-    "data_sources": {
-      "primary_observations": [
-        {
-          "source": "Zero-hop ADVERT packets",
-          "confidence": "1.0 (ground truth)",
-          "data": "Direct RF contact confirmed; RSSI, SNR, timestamp",
-          "usage": "Anchor points for geographic inference; edge weight calibration"
-        },
-        {
-          "source": "Packet paths (forwarded_path / original_path)",
-          "confidence": "0.3-0.95 depending on disambiguation",
-          "data": "Sequence of 2-char hex prefixes representing forwarding chain",
-          "usage": "Primary topology evidence; edge discovery"
-        },
-        {
-          "source": "RSSI/SNR measurements",
-          "confidence": "0.7-0.9",
-          "data": "Signal quality at reception",
-          "usage": "Distance estimation; link quality modeling"
-        },
-        {
-          "source": "Neighbor table (from API)",
-          "confidence": "0.9",
-          "data": "Known nodes with hashes, locations, last_seen, contact_type",
-          "usage": "Candidate pool for prefix disambiguation"
-        }
-      ],
-      "derived_signals": [
-        "Packet timing patterns (collision inference)",
-        "Route type distribution (FLOOD vs DIRECT)",
-        "Airtime measurements (distance proxy)",
-        "Noise floor correlation with traffic (interference mapping)"
+  "implementation_priority": {
+    "sprint_1": {
+      "name": "WebSocket Radio Events + Hardware",
+      "effort": "1-2 days",
+      "tasks": [
+        "Add /radio WebSocket endpoint to CherryPy",
+        "Create broadcast function for connected clients",
+        "Hook SX1262 RX callback to push 'rx' events",
+        "Hook TX completion to push 'tx' events",
+        "Hook noise floor sampling to push 'noise' events",
+        "Add 'hardware' event with CPU/memory/disk/temp (every 10s)",
+        "Add 'send_advert' command handler"
       ]
     },
-
-    "inference_pipeline": {
-      "description": "12-phase pipeline from raw packets to complete topology model",
-
-      "phase_1_packet_parsing": {
-        "name": "Packet Path Extraction",
-        "input": "Raw packet with path field",
-        "output": "Parsed path segments with metadata",
-        "algorithm": "Route-aware parsing: DIRECT routes have path_len semantics different from FLOOD routes",
-        "key_logic": {
-          "flood_routing": "path contains all forwarders that touched the packet",
-          "direct_routing": "path_len indicates intermediary count; path may be pre-computed"
-        }
-      },
-
-      "phase_2_prefix_disambiguation": {
-        "name": "Four-Factor Prefix Resolution",
-        "description": "Resolve 2-char hex prefixes to full node hashes using multi-factor scoring",
-        "algorithm": "Weighted combination of position, co-occurrence, geography, and recency",
-        "factors": {
-          "position_consistency": {
-            "weight": 0.15,
-            "description": "How consistently does this candidate appear at specific path positions?",
-            "calculation": "positionCounts[i] / sum(positionCounts) for typical position i"
-          },
-          "cooccurrence_frequency": {
-            "weight": 0.15,
-            "description": "How often does this prefix appear adjacent to known prefixes?",
-            "calculation": "adjacentCount[knownPrefix] / totalAdjacentObservations"
-          },
-          "geographic_plausibility": {
-            "weight": 0.35,
-            "description": "Is the candidate physically plausible given RF propagation limits?",
-            "sub_factors": [
-              "Distance to local node (closer = higher score)",
-              "Source-geographic correlation (position-1 proximity to packet source)",
-              "Previous-hop anchor (proximity to resolved upstream node)",
-              "Next-hop anchor (proximity to resolved downstream node)",
-              "Zero-hop boost for confirmed direct RF contacts"
-            ],
-            "distance_bands": {
-              "very_close": { "range_m": 500, "score": 1.0 },
-              "close": { "range_m": 2000, "score": 0.8 },
-              "medium": { "range_m": 5000, "score": 0.6 },
-              "far": { "range_m": 10000, "score": 0.4 },
-              "very_far": { "range_m": 20000, "score": 0.2 }
-            }
-          },
-          "recency_scoring": {
-            "weight": 0.35,
-            "description": "Exponential decay favoring recently-seen nodes",
-            "formula": "e^(-hours_since_seen / 12)",
-            "half_life_hours": 12,
-            "max_age_hours": 336,
-            "note": "Nodes not seen in 14 days are filtered out entirely"
-          }
-        },
-        "confidence_thresholds": {
-          "very_high": { "threshold": 0.9, "usage": "Single endpoint sufficient for edge certainty" },
-          "high": { "threshold": 0.6, "usage": "Both endpoints required for certain edge" },
-          "medium": { "threshold": 0.4, "usage": "Minimum for edge inclusion" },
-          "low": { "threshold": 0.0, "usage": "Excluded from topology" }
-        },
-        "output": "Map<prefix, { bestMatch: hash, confidence: number, candidates: array }>"
-      },
-
-      "phase_3_viterbi_path_decoding": {
-        "name": "HMM-Based Optimal Path Recovery",
-        "description": "Use Viterbi algorithm to find globally optimal node sequence given all constraints",
-        "algorithm": "Hidden Markov Model with custom emission and transition probabilities",
-        "mathematical_formulation": {
-          "states": "All candidate nodes for each position + optional ghost state",
-          "observations": "2-char prefixes at each path position",
-          "emission_probability": "P(prefix | node) = 1 if prefix matches, 0 otherwise",
-          "transition_probability": "P(node_i+1 | node_i) = physics-based link probability",
-          "objective": "argmax_sequence P(observations | sequence) × P(sequence)"
-        },
-        "state_prior_calculation": {
-          "formula": "prior_cost = -ln(recency_score) - confidence_bonus",
-          "recency_component": "-ln(max(recency_score, 0.01))",
-          "confidence_bonus": "2.0 if disambiguation_confidence >= 0.6"
-        },
-        "transition_cost_calculation": {
-          "physics_cost": "linkCost(lat1, lon1, lat2, lon2) based on distance + earth bulge",
-          "observation_override": "If both nodes have confidence >= 0.8, use observed cost (near-zero)",
-          "edge_history_bonus": "-0.5 × min(edge_observations / 10, 1.0)"
-        },
-        "ghost_node_handling": {
-          "description": "Virtual state representing unknown/undiscovered nodes",
-          "dynamic_cost": {
-            "no_candidates": 5.0,
-            "low_confidence_candidates": 12.0,
-            "medium_confidence_candidates": 15.0,
-            "high_confidence_candidates": 20.0
-          },
-          "suppression_rules": [
-            "Candidate has location AND is fresh (recency > 0.35) AND confidence > 0.3",
-            "Candidate observed communicating with adjacent nodes >= 5 times"
-          ]
-        },
-        "output": "DecodedPath with node sequence, confidences, total cost, ghost flags"
-      },
-
-      "phase_4_edge_construction": {
-        "name": "Topology Edge Building",
-        "description": "Construct edges from decoded paths with confidence and directionality tracking",
-        "edge_attributes": [
-          "fromHash, toHash, key (sorted pair)",
-          "packetCount, certainCount",
-          "avgConfidence, strength, avgRecency",
-          "forwardCount, reverseCount, symmetryRatio, dominantDirection",
-          "floodCount, directCount, isDirectPathEdge",
-          "isZeroHop, avgRssi, avgSnr (for ground truth edges)",
-          "hopDistanceFromLocal, isHubConnection, isLoopEdge"
-        ],
-        "certainty_rules": {
-          "both_endpoints_high": "confidence >= 0.6 for both → isCertain = true",
-          "destination_very_high": "destination confidence >= 0.9 → isCertain = true",
-          "destination_is_local": "last hop to local node → isCertain = true"
-        },
-        "minimum_validations": 5
-      },
-
-      "phase_5_graph_analysis": {
-        "name": "Graph-Theoretic Metrics",
-        "algorithms": {
-          "betweenness_centrality": {
-            "description": "Identify backbone edges by traffic flow importance",
-            "algorithm": "Brandes algorithm O(VE)",
-            "output": "Map<edgeKey, normalizedScore>",
-            "usage": "Backbone edge identification, hub detection"
-          },
-          "connected_components": {
-            "description": "Find disconnected subgraphs",
-            "algorithm": "Union-Find with path compression",
-            "output": "Array of node sets",
-            "usage": "Network fragmentation detection"
-          },
-          "shortest_paths": {
-            "description": "All-pairs shortest paths for latency estimation",
-            "algorithm": "Floyd-Warshall or Johnson's algorithm",
-            "output": "Distance matrix",
-            "usage": "Path health scoring, routing optimization"
-          }
-        }
-      },
-
-      "phase_6_loop_detection": {
-        "name": "H₁ Homology Loop Detection",
-        "description": "Find redundant paths (cycles) indicating mesh resilience",
-        "algorithm": "First Betti number computation via cycle basis",
-        "mathematical_basis": {
-          "betti_number": "β₁ = |E| - |V| + |connected_components|",
-          "interpretation": "Number of independent cycles in the graph",
-          "cycle_basis": "Minimal set of cycles that generate all cycles"
-        },
-        "output": {
-          "loops": "Array of NetworkLoop objects",
-          "attributes": ["edgeKeys", "nodes", "size", "avgCertainCount", "strength", "includesLocal"]
-        },
-        "significance": "Loops provide fault tolerance - if one link fails, traffic routes via alternate path"
-      },
-
-      "phase_7_hub_gateway_classification": {
-        "name": "Node Role Classification",
-        "description": "Classify nodes by traffic percentage (percentage-only, scales with volume)",
-        "classification_rules": {
-          "hub": {
-            "threshold": ">= 10% of last-hop traffic",
-            "characteristics": "True network hub, handles significant traffic",
-            "typical_count": "1-3 per mesh"
-          },
-          "gateway": {
-            "threshold": "7-10% of last-hop traffic",
-            "characteristics": "Significant forwarder, relays substantial traffic"
-          },
-          "standard": {
-            "threshold": "< 7% of last-hop traffic",
-            "characteristics": "Normal mesh participant"
-          }
-        },
-        "network_role_for_tx_delay": {
-          "backbone": "High centrality + >= 50% symmetric traffic",
-          "hub": "High centrality (bridge or gateway role)",
-          "relay": ">= 30% symmetric + moderate connectivity",
-          "edge": "Low connectivity or asymmetric traffic"
-        }
-      },
-
-      "phase_8_mobile_detection": {
-        "name": "Mobile/Volatile Node Identification",
-        "description": "Detect nodes with unstable network position",
-        "metrics": {
-          "path_volatility": {
-            "description": "How often node appears/disappears from paths",
-            "calculation": "stddev(presence_per_window) / mean(presence_per_window)",
-            "threshold": "> 0.3 indicates mobile"
-          },
-          "active_window_ratio": {
-            "description": "Fraction of time windows where node was active",
-            "calculation": "windows_with_activity / total_windows"
-          },
-          "neighbor_churn": {
-            "description": "Rate of neighbor set changes",
-            "calculation": "(neighbors_gained + neighbors_lost) / total_neighbors"
-          }
-        },
-        "output": "NodeMobility { pathVolatility, pathDiversity, isMobile, activeWindowRatio }"
-      },
-
-      "phase_9_ghost_cluster_analysis": {
-        "name": "Unknown Node Discovery",
-        "description": "Identify and characterize nodes not in neighbor table",
-        "detection_method": "Viterbi decoder assigns ghost state when no candidate fits physics",
-        "ghost_cluster_attributes": [
-          "prefix (2-char)",
-          "observation_count",
-          "first_seen, last_seen",
-          "is_likely_real (vs disambiguation artifact)",
-          "estimated_lat, estimated_lon (triangulated)",
-          "location_variance",
-          "anchor_nodes (adjacent known nodes used for triangulation)"
-        ],
-        "triangulation_method": {
-          "description": "Estimate ghost location from known adjacent nodes",
-          "algorithm": "Weighted centroid of anchor nodes, weights = 1/link_cost",
-          "confidence": "Higher with more anchors and lower variance"
-        }
-      },
-
-      "phase_10_physics_model": {
-        "name": "RF Propagation Physics",
-        "description": "Physics-grounded link feasibility using propagation models",
-        "models": {
-          "free_space_path_loss": {
-            "formula": "FSPL(dB) = 20×log10(d) + 20×log10(f) - 147.55",
-            "usage": "Baseline link budget calculation"
-          },
-          "earth_bulge": {
-            "formula": "h = d² / (8 × R_earth)",
-            "description": "Height of Earth's curvature at midpoint",
-            "usage": "Line-of-sight feasibility for long links"
-          },
-          "sigmoid_distance_decay": {
-            "formula": "P(d) = 1 / (1 + e^(k × (d - d₀)))",
-            "parameters": {
-              "d0_km": 60,
-              "k": 0.15
-            },
-            "description": "Probability of successful link vs distance"
-          },
-          "terrain_awareness": {
-            "description": "Optional elevation-aware link feasibility",
-            "data_source": "SRTM/ASTER DEM tiles",
-            "fresnel_zone": "First Fresnel zone clearance check"
-          }
-        },
-        "link_cost_calculation": {
-          "formula": "cost = -ln(P_distance × P_bulge × P_terrain)",
-          "interpretation": "Negative log-probability; lower = more likely link",
-          "hard_cutoff_km": 150
-        }
-      },
-
-      "phase_11_temporal_evolution": {
-        "name": "Topology Change Tracking",
-        "description": "Track how topology evolves over time",
-        "metrics": {
-          "edge_stability": "How long edges persist without interruption",
-          "topology_entropy": "Shannon entropy of edge distribution",
-          "graph_edit_distance": "Minimum edits to transform topology T1 → T2"
-        },
-        "change_events": [
-          "edge_appeared (new link discovered)",
-          "edge_disappeared (link went dark)",
-          "edge_strengthened (more observations)",
-          "edge_weakened (fewer recent observations)",
-          "hub_promotion / hub_demotion",
-          "component_split / component_merge"
-        ]
-      },
-
-      "phase_12_model_synthesis": {
-        "name": "Unified Topology Model",
-        "description": "Combine all phases into coherent network model",
-        "output_structure": {
-          "nodes": "Array of NodeModel with hash, location, role, mobility, confidence",
-          "edges": "Array of TopologyEdge with full metadata",
-          "loops": "Array of NetworkLoop",
-          "ghost_clusters": "Array of GhostCluster",
-          "metrics": {
-            "total_nodes": "integer",
-            "total_edges": "integer",
-            "graph_density": "edges / (nodes × (nodes-1) / 2)",
-            "avg_degree": "2 × edges / nodes",
-            "clustering_coefficient": "local clustering average",
-            "diameter": "longest shortest path",
-            "betti_1": "number of independent cycles"
-          },
-          "health": {
-            "connectivity_score": "0-1 based on component count and sizes",
-            "redundancy_score": "0-1 based on loop coverage",
-            "confidence_score": "0-1 based on edge certainty distribution"
-          }
-        }
-      }
+    "sprint_2": {
+      "name": "REST Core Cleanup",
+      "effort": "1-2 days",
+      "tasks": [
+        "Ensure /api/stats returns all current state fields",
+        "Add /api/logs endpoint with level filter",
+        "Add proper before/after/offset pagination to /api/packets",
+        "Add src_hash, dst_hash, path_contains filters to /api/packets",
+        "Add /api/neighbors endpoint with type and zero_hop filters"
+      ]
     },
-
-    "advanced_algorithms": {
-      "description": "Cutting-edge mathematical methods for topology inference",
-
-      "belief_propagation": {
-        "name": "Loopy Belief Propagation for Joint Disambiguation",
-        "description": "Message-passing algorithm for simultaneous disambiguation of all path positions",
-        "rationale": "Standard disambiguation is greedy (position-by-position). BP considers global consistency.",
-        "algorithm": {
-          "factor_graph": "Nodes = path positions; Factors = pairwise link feasibility + unary priors",
-          "messages": "μ_{i→j}(x_j) = Σ_{x_i} ψ(x_i, x_j) × φ(x_i) × Π_{k≠j} μ_{k→i}(x_i)",
-          "convergence": "Iterate until message change < ε or max iterations",
-          "marginals": "P(x_i) ∝ φ(x_i) × Π_j μ_{j→i}(x_i)"
-        },
-        "advantages": [
-          "Handles multi-hop consistency constraints",
-          "Naturally incorporates uncertainty",
-          "Can detect inconsistent observations"
-        ],
-        "complexity": "O(n × k² × iterations) where k = avg candidates per position"
-      },
-
-      "graph_neural_network": {
-        "name": "GNN-Based Topology Completion",
-        "description": "Learn edge prediction function from observed topology",
-        "architecture": {
-          "encoder": "GraphSAGE or GAT for node embeddings",
-          "decoder": "Inner product or MLP for edge probability",
-          "loss": "Binary cross-entropy on held-out edges"
-        },
-        "features": {
-          "node_features": ["location", "traffic_volume", "avg_rssi", "contact_type", "recency"],
-          "edge_features": ["distance", "observation_count", "symmetry_ratio", "route_type_distribution"]
-        },
-        "training": {
-          "positive_samples": "Observed certain edges",
-          "negative_samples": "Random node pairs with no observations",
-          "augmentation": "Edge dropout, feature noise"
-        },
-        "inference": "Predict probability for all unobserved node pairs; threshold for edge creation"
-      },
-
-      "spectral_clustering": {
-        "name": "Spectral Analysis for Community Detection",
-        "description": "Identify densely connected subgroups using graph Laplacian",
-        "algorithm": {
-          "laplacian": "L = D - A (unnormalized) or L_sym = I - D^{-1/2} A D^{-1/2}",
-          "eigendecomposition": "Compute k smallest eigenvectors of L",
-          "embedding": "Each node → k-dimensional vector from eigenvectors",
-          "clustering": "K-means on embedded vectors"
-        },
-        "applications": [
-          "Geographic cluster identification",
-          "Network partitioning for load analysis",
-          "Anomalous subgraph detection"
-        ]
-      },
-
-      "matrix_factorization": {
-        "name": "Low-Rank Matrix Completion",
-        "description": "Infer missing edges using matrix factorization",
-        "formulation": {
-          "adjacency_matrix": "A ∈ R^{n×n}, partially observed",
-          "factorization": "A ≈ U × V^T where U, V ∈ R^{n×r}, r << n",
-          "objective": "min ||P_Ω(A - UV^T)||² + λ(||U||² + ||V||²)",
-          "interpretation": "Each node has r-dimensional latent embedding; edge strength = dot product"
-        },
-        "advantages": [
-          "Naturally handles sparse observations",
-          "Provides confidence via reconstruction error",
-          "Computationally efficient for large graphs"
-        ]
-      },
-
-      "kalman_filter_tracking": {
-        "name": "Kalman Filter for Mobile Node Tracking",
-        "description": "Optimal state estimation for moving nodes",
-        "state_vector": "[x, y, vx, vy] (position and velocity)",
-        "dynamics_model": "Constant velocity with process noise",
-        "observation_model": "Position estimates from RF triangulation",
-        "equations": {
-          "predict": "x̂_{k|k-1} = F × x̂_{k-1|k-1}",
-          "update": "x̂_{k|k} = x̂_{k|k-1} + K × (z_k - H × x̂_{k|k-1})",
-          "kalman_gain": "K = P_{k|k-1} × H^T × (H × P_{k|k-1} × H^T + R)^{-1}"
-        },
-        "output": "Smoothed position trajectory with uncertainty bounds"
-      },
-
-      "gaussian_process_regression": {
-        "name": "GP for Signal Propagation Modeling",
-        "description": "Non-parametric regression for RSSI prediction",
-        "kernel": "RBF + periodic (for daily patterns) + noise",
-        "training_data": "(location, time, observed_rssi) tuples",
-        "prediction": "RSSI distribution at any location/time with uncertainty",
-        "applications": [
-          "Coverage map generation",
-          "Link quality prediction for unseen pairs",
-          "Anomaly detection (observed vs predicted)"
-        ]
-      },
-
-      "persistent_homology": {
-        "name": "Topological Data Analysis",
-        "description": "Study topology at multiple scales using persistent homology",
-        "algorithm": {
-          "filtration": "Build sequence of simplicial complexes by increasing edge threshold",
-          "persistence": "Track when topological features (components, loops) appear/disappear",
-          "barcode": "Visual representation of feature lifetimes"
-        },
-        "features": {
-          "H0": "Connected components (network fragmentation)",
-          "H1": "Loops/cycles (redundant paths)",
-          "H2": "Voids (rare in 2D network embeddings)"
-        },
-        "applications": [
-          "Robust topology comparison across time",
-          "Identify stable vs transient network features",
-          "Network resilience quantification"
-        ]
-      },
-
-      "monte_carlo_tree_search": {
-        "name": "MCTS for Path Exploration",
-        "description": "Explore possible path interpretations using MCTS",
-        "algorithm": {
-          "selection": "UCB1 to balance exploration/exploitation",
-          "expansion": "Add child nodes for unexplored candidates",
-          "simulation": "Random playout with physics-weighted sampling",
-          "backpropagation": "Update ancestor statistics with simulation result"
-        },
-        "application": "When Viterbi trellis is too large, use MCTS for approximate solution"
-      }
+    "sprint_3": {
+      "name": "Time Series + Actions",
+      "effort": "2-3 days",
+      "tasks": [
+        "Create stats_buckets and noise_floor_samples tables",
+        "Implement aggregation background task",
+        "Implement /api/timeseries endpoint",
+        "Implement /api/stats/bucketed endpoint",
+        "Add /api/radio_presets endpoint",
+        "Add /api/log_level POST endpoint",
+        "Add /api/flood_policy POST endpoint",
+        "Expand /api/duty_cycle with GET and full config POST"
+      ]
     },
-
-    "incremental_updates": {
-      "description": "Efficient algorithms for real-time topology updates",
-
-      "online_learning": {
-        "edge_observation": {
-          "algorithm": "Exponential moving average for edge strength",
-          "formula": "strength_new = α × observation + (1-α) × strength_old",
-          "alpha": 0.1
-        },
-        "disambiguation_update": {
-          "algorithm": "Incremental Bayesian update",
-          "formula": "P(node|prefix) ∝ P(observation|node) × P_prior(node)",
-          "trigger": "New packet with ambiguous prefix"
-        }
-      },
-
-      "lazy_recomputation": {
-        "description": "Defer expensive computations until necessary",
-        "strategies": [
-          "Centrality: Recompute only when edge count changes by >10%",
-          "Loops: Recompute only when new edge could create cycle",
-          "Ghost clusters: Recompute only when confidence distribution shifts"
-        ]
-      },
-
-      "change_propagation": {
-        "description": "Propagate local changes through dependent computations",
-        "dependency_graph": {
-          "packet": ["disambiguation", "edge_counts"],
-          "disambiguation": ["edge_confidence", "ghost_clusters"],
-          "edge_counts": ["centrality", "hub_classification", "loops"],
-          "edge_confidence": ["topology_snapshot"],
-          "centrality": ["hub_classification", "tx_delay_recommendations"]
-        }
-      }
+    "sprint_4": {
+      "name": "Identity + Keys + Tokens",
+      "effort": "1-2 days",
+      "tasks": [
+        "Add POST /api/identities/{name}/advert for room server adverts",
+        "Verify transport key CRUD endpoints",
+        "Verify API token CRUD endpoints"
+      ],
+      "note": "Most of these already exist - just verify and document"
     },
-
-    "api_endpoints": {
-      "request_actions": {
-        "infer_topology": {
-          "description": "Trigger full topology inference pipeline",
-          "params": {
-            "packet_hours": "integer (default 168 = 1 week)",
-            "algorithm": "string (viterbi|belief_propagation|hybrid)",
-            "confidence_threshold": "number (default 0.4)",
-            "enable_ghost_detection": "boolean (default true)",
-            "enable_physics_model": "boolean (default true)"
-          },
-          "response": {
-            "job_id": "string",
-            "estimated_duration_ms": "integer"
-          }
-        },
-
-        "get_inference_result": {
-          "description": "Retrieve completed inference result",
-          "params": { "job_id": "string" },
-          "response": {
-            "status": "pending|computing|complete|failed",
-            "progress_percent": "number",
-            "topology": "TopologyModel (if complete)",
-            "metrics": "InferenceMetrics",
-            "warnings": "array of string"
-          }
-        },
-
-        "decode_path": {
-          "description": "Decode single path using Viterbi",
-          "params": {
-            "path": "array of 2-char prefixes",
-            "src_hash": "string (optional, for source-geo correlation)",
-            "enable_ghost": "boolean"
-          },
-          "response": {
-            "nodes": "array of { prefix, hash, confidence, is_ghost, location }",
-            "total_cost": "number",
-            "path_confidence": "number"
-          }
-        },
-
-        "estimate_link_feasibility": {
-          "description": "Physics-based link feasibility between two points",
-          "params": {
-            "lat1": "number",
-            "lon1": "number",
-            "lat2": "number",
-            "lon2": "number",
-            "include_terrain": "boolean"
-          },
-          "response": {
-            "distance_km": "number",
-            "earth_bulge_m": "number",
-            "probability": "number (0-1)",
-            "cost": "number (negative log probability)",
-            "terrain_clearance_m": "number (if terrain enabled)",
-            "feasibility": "certain|likely|possible|unlikely|impossible"
-          }
-        },
-
-        "get_graph_metrics": {
-          "description": "Compute graph-theoretic metrics on current topology",
-          "params": {
-            "metrics": "array of string (centrality|clustering|paths|components|loops)"
-          },
-          "response": {
-            "betweenness_centrality": "map<hash, score>",
-            "clustering_coefficients": "map<hash, score>",
-            "shortest_paths": "matrix or sparse map",
-            "connected_components": "array of node arrays",
-            "loops": "array of NetworkLoop",
-            "summary": {
-              "diameter": "integer",
-              "avg_path_length": "number",
-              "density": "number",
-              "betti_1": "integer"
-            }
-          }
-        },
-
-        "triangulate_ghost": {
-          "description": "Estimate location of ghost node from anchor observations",
-          "params": {
-            "prefix": "string",
-            "anchor_hashes": "array of string (optional, auto-detect if omitted)"
-          },
-          "response": {
-            "estimated_lat": "number",
-            "estimated_lon": "number",
-            "uncertainty_m": "number (radius of 95% confidence)",
-            "anchor_count": "integer",
-            "method": "centroid|trilateration|least_squares"
-          }
-        }
-      },
-
-      "websocket_events": {
-        "topology_model_updated": {
-          "description": "Full topology model recomputed",
-          "payload": {
-            "nodes_added": "array of hash",
-            "nodes_removed": "array of hash",
-            "edges_added": "array of edge_key",
-            "edges_removed": "array of edge_key",
-            "metrics_changed": "object with changed metrics"
-          }
-        },
-        "inference_progress": {
-          "description": "Progress update for long-running inference",
-          "payload": {
-            "job_id": "string",
-            "phase": "string (current phase name)",
-            "progress_percent": "number",
-            "packets_processed": "integer",
-            "edges_discovered": "integer"
-          }
-        }
-      }
-    },
-
-    "database_schema": {
-      "topology_inference_jobs": {
-        "columns": {
-          "job_id": "TEXT PRIMARY KEY",
-          "status": "TEXT (pending|computing|complete|failed)",
-          "algorithm": "TEXT",
-          "params_json": "TEXT",
-          "started_at": "INTEGER",
-          "completed_at": "INTEGER",
-          "packets_analyzed": "INTEGER",
-          "result_json": "TEXT (compressed)",
-          "error_message": "TEXT"
-        }
-      },
-      "disambiguation_evidence": {
-        "description": "Accumulated evidence for prefix disambiguation",
-        "columns": {
-          "prefix": "TEXT NOT NULL",
-          "candidate_hash": "TEXT NOT NULL",
-          "position_counts_json": "TEXT",
-          "adjacent_prefixes_json": "TEXT",
-          "geo_evidence_score": "REAL",
-          "last_seen": "INTEGER",
-          "total_observations": "INTEGER"
-        },
-        "primary_key": "(prefix, candidate_hash)"
-      },
-      "viterbi_cache": {
-        "description": "Cache decoded paths to avoid recomputation",
-        "columns": {
-          "path_signature": "TEXT PRIMARY KEY (hash of input path)",
-          "decoded_json": "TEXT",
-          "total_cost": "REAL",
-          "computed_at": "INTEGER",
-          "hit_count": "INTEGER"
-        },
-        "eviction": "LRU with 10K entry limit"
-      }
-    },
-
-    "performance_characteristics": {
-      "viterbi_decoding": {
-        "complexity": "O(T × S²) where T = path length, S = avg candidates per position",
-        "typical_time": "1-5ms per path",
-        "parallelization": "Paths are independent; parallelize across packets"
-      },
-      "full_topology_inference": {
-        "complexity": "O(P × T × S²) + O(E × V) for centrality",
-        "typical_time": "5-30 seconds for 50K packets",
-        "memory": "~100MB for topology state"
-      },
-      "incremental_update": {
-        "complexity": "O(T × S²) for single packet",
-        "typical_time": "< 10ms",
-        "trigger": "Every packet or batched every 100ms"
-      }
+    "sprint_5": {
+      "name": "Rooms + Frontend Config",
+      "effort": "1 day",
+      "tasks": [
+        "Verify room stats and clients endpoints",
+        "Add /api/web_config GET/POST endpoints",
+        "Add /api/web_config/check endpoint"
+      ],
+      "note": "Frontend config is pymc_console overlay specific"
     }
   },
 
-  "future_proofing": {
-    "description": "Design decisions for future extensibility",
-
-    "versioning": {
-      "strategy": "URL path versioning for REST, subprotocol versioning for WebSocket",
-      "rest_example": "/api/v2/packets",
-      "ws_example": "Sec-WebSocket-Protocol: pymc-console-v2",
-      "deprecation_policy": "Support N-1 version for 6 months after new version release"
-    },
-
-    "extensible_events": {
-      "description": "All events include a 'version' field for schema evolution",
-      "example": {
-        "type": "event",
-        "channel": "packets",
-        "event_type": "packet_received",
-        "version": 1,
-        "payload": "..."
-      },
-      "migration": "Clients should ignore unknown fields; server can add fields without breaking clients"
-    },
-
-    "plugin_channels": {
-      "description": "Reserved namespace for future plugin/extension channels",
-      "reserved_prefixes": ["plugin.", "ext.", "custom."],
-      "example": "plugin.wardriving",
-      "note": "Plugins can register custom channels without modifying core protocol"
-    },
-
-    "batch_operations": {
-      "description": "Future support for bulk operations",
-      "planned_actions": [
-        "batch_hide_neighbors - Hide multiple neighbors at once",
-        "batch_export - Export multiple data types in one request",
-        "batch_ping - Ping multiple neighbors in parallel"
-      ]
-    },
-
-    "streaming_export": {
-      "description": "Future support for large data exports without timeout",
-      "approach": "Server-Sent Events (SSE) or chunked transfer for exports > 10MB",
-      "planned_endpoint": "GET /api/export/stream?format=csv&start_time=X&end_time=Y"
-    },
-
-    "federation_hooks": {
-      "description": "Hooks for future multi-node federation",
-      "planned_features": [
-        "Subscribe to remote node's WebSocket via proxy",
-        "Aggregate stats from multiple repeaters",
-        "Cross-node topology view"
-      ],
-      "note": "Not implemented in v2.0, but API designed to not preclude it"
-    },
-
-    "machine_learning_hooks": {
-      "description": "Data formats compatible with ML pipeline ingestion",
-      "features": [
-        "Time series export in ML-friendly formats (Parquet, Arrow)",
-        "Feature vectors for anomaly detection training",
-        "Labeled data export for supervised learning"
-      ]
-    },
-
-    "reserved_channels": [
-      "alerts - Future alerting system",
-      "automation - Future automation triggers",
-      "federation - Multi-node federation",
-      "ml - Machine learning insights"
+  "what_we_are_not_doing": {
+    "description": "Complexity removed from previous design to keep it simple",
+    "removed": [
+      "Subscription channels - WebSocket just streams everything",
+      "Message sequencing/replay - miss events? use REST for history",
+      "Server-side topology computation - keep client-side, it works",
+      "Server-side prefix disambiguation - same, keep client-side",
+      "Sparkline pre-computation - client computes from time series",
+      "Encoded pagination cursors - simple timestamps work fine",
+      "Prometheus metrics export - add later if needed",
+      "Federation/multi-node support - premature",
+      "Machine learning hooks - premature"
     ]
   },
 
-  "implementation_strategy": {
-    "description": "Phased implementation approach for WebSocket architecture",
-
-    "phases": [
-      {
-        "phase": 1,
-        "name": "Core WebSocket Infrastructure",
-        "description": "Implement WebSocket server, message routing, subscription management, and heartbeat",
-        "deliverables": [
-          "WebSocket endpoint at /ws",
-          "Message envelope parsing/serialization",
-          "Subscription state management",
-          "Ping/pong heartbeat",
-          "Connection lifecycle handling"
-        ],
-        "risk": "Medium",
-        "effort": "High"
-      },
-      {
-        "phase": 2,
-        "name": "Packets Channel",
-        "description": "Real-time packet streaming with filtering",
-        "deliverables": [
-          "Packet event emission on RX/TX",
-          "Filter matching for subscriptions",
-          "Initial state hydration",
-          "Duplicate detection events"
-        ],
-        "risk": "Low",
-        "effort": "Medium"
-      },
-      {
-        "phase": 3,
-        "name": "Stats Channel",
-        "description": "Real-time statistics updates",
-        "deliverables": [
-          "Count/rate updates",
-          "Bucket aggregation",
-          "Noise floor and duty cycle events",
-          "Hourly pre-aggregation"
-        ],
-        "risk": "Low",
-        "effort": "Medium"
-      },
-      {
-        "phase": 4,
-        "name": "Topology Channel",
-        "description": "Server-side topology computation and streaming",
-        "deliverables": [
-          "Incremental edge tracking",
-          "Hub/gateway detection",
-          "Mobile node detection",
-          "Ghost cluster tracking",
-          "Prefix disambiguation"
-        ],
-        "risk": "High",
-        "effort": "High"
-      },
-      {
-        "phase": 5,
-        "name": "Neighbors & LBT Channels",
-        "description": "Contact management and LBT statistics",
-        "deliverables": [
-          "Zero-hop neighbor detection",
-          "Neighbor status tracking",
-          "LBT metric aggregation",
-          "Collision risk calculation"
-        ],
-        "risk": "Low",
-        "effort": "Medium"
-      },
-      {
-        "phase": 6,
-        "name": "Session Management & Replay",
-        "description": "Reconnection handling and message replay",
-        "deliverables": [
-          "Session persistence",
-          "Event log storage",
-          "Replay on reconnect",
-          "Sequence gap detection"
-        ],
-        "risk": "Medium",
-        "effort": "Medium"
-      }
-    ]
-  },
-
-  "performance_targets": {
-    "description": "Performance targets for WebSocket implementation",
-
-    "latency": {
-      "packet_event_latency": "< 50ms from radio RX to client WebSocket",
-      "stats_update_latency": "< 100ms from packet to stats event",
-      "topology_update_latency": "< 200ms from packet to topology event"
+  "packet_schema": {
+    "description": "Reference: MeshCore packet structure for context",
+    "fields": {
+      "packet_hash": "string - unique identifier",
+      "timestamp": "integer - Unix timestamp",
+      "type": "integer - payload type (0-15)",
+      "route": "integer - route type (0-3)",
+      "transmitted": "boolean - true if TX, false if RX",
+      "src_hash": "string - source node hash",
+      "dst_hash": "string - destination node hash (if direct)",
+      "rssi": "integer - RSSI in dBm (RX only)",
+      "snr": "number - SNR in dB (RX only)",
+      "path": "array of strings - hop prefixes",
+      "payload": "bytes - raw payload"
     },
-
-    "throughput": {
-      "max_packets_per_second": "100 packets/sec sustained",
-      "max_concurrent_connections": "10 WebSocket clients",
-      "max_subscriptions_per_client": "All channels simultaneously"
+    "payload_types": {
+      "0": "REQ",
+      "1": "RESPONSE",
+      "2": "TXT_MSG",
+      "3": "ACK",
+      "4": "ADVERT",
+      "5": "GRP_TXT",
+      "6": "GRP_DATA",
+      "7": "ANON_REQ",
+      "8": "PATH",
+      "9": "TRACE",
+      "10": "MULTIPART",
+      "15": "RAW_CUSTOM"
     },
-
-    "memory": {
-      "event_log_size": "< 50MB (10K events × 5KB avg)",
-      "topology_cache": "< 10MB",
-      "subscription_state": "< 1MB per client"
-    },
-
-    "reconnection": {
-      "session_timeout": "5 minutes (session valid for replay)",
-      "max_replay_events": "1000 events per channel on reconnect"
-    }
-  },
-
-  "frontend_integration": {
-    "description": "Frontend changes required to consume WebSocket API",
-
-    "new_services": [
-      "WebSocketService - Connection management, reconnection, message routing",
-      "SubscriptionManager - Channel subscription state",
-      "EventBuffer - Buffer events during brief disconnects"
-    ],
-
-    "zustand_store_changes": [
-      "Replace polling intervals with WebSocket subscriptions",
-      "Add connection state (connected/disconnected/reconnecting)",
-      "Process delta updates instead of full refreshes",
-      "Handle sequence gaps and replay"
-    ],
-
-    "removed_dependencies": [
-      "Polling intervals in useStore.ts (3-second stats/packets polling)",
-      "topology.worker.ts - Server computes topology",
-      "sparkline.worker.ts - Server computes sparklines",
-      "LBTDataContext client-side computation",
-      "packetCache client-side memory management"
-    ],
-
-    "backward_compatibility": {
-      "description": "Frontend should detect WebSocket availability and fall back to REST polling if unavailable",
-      "detection": "Attempt WebSocket connection; if fails or server returns 404, fall back to REST",
-      "fallback_behavior": "Use existing polling architecture with REST endpoints"
-    }
-  },
-
-  "error_handling": {
-    "error_codes": {
-      "1000": "Normal closure",
-      "1001": "Going away (server shutdown)",
-      "1002": "Protocol error",
-      "1003": "Unsupported data",
-      "4000": "Invalid message format",
-      "4001": "Unknown channel",
-      "4002": "Invalid subscription options",
-      "4003": "Rate limited",
-      "4004": "Authentication required",
-      "4005": "Session expired",
-      "4006": "Action failed"
-    },
-
-    "reconnection_strategy": {
-      "initial_delay_ms": 1000,
-      "max_delay_ms": 30000,
-      "backoff_multiplier": 2,
-      "max_attempts": 10,
-      "jitter": true
+    "route_types": {
+      "0": "T_FLOOD (transport flood)",
+      "1": "FLOOD",
+      "2": "DIRECT",
+      "3": "T_DIRECT (transport direct)"
     }
   }
 }
