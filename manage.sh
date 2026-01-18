@@ -897,17 +897,13 @@ do_install() {
     }
     
     # =========================================================================
-    # Step 4: Apply patches to installed files
+    # Step 4: Apply log level API patch
     # =========================================================================
-    print_step 4 $total_steps "Applying pyMC Console patches"
+    print_step 4 $total_steps "Configuring log level API"
     
-    # Apply patches to /opt/pymc_repeater (the installed location, not the clone)
-    print_info "Patching installed files..."
-    # PATCH 1 & 5 removed - merged upstream in PR #36 (feat/identity branch)
-    patch_logging_section "$INSTALL_DIR"         # PATCH 2: Ensure logging section exists
-    patch_log_level_api "$INSTALL_DIR"           # PATCH 3: Log level toggle API
-    patch_mesh_cli "$INSTALL_DIR"                # PATCH 4: MeshCore CLI parity
-    patch_private_key_api "$INSTALL_DIR"         # PATCH 6: Private key get/set API
+    # Apply single patch: POST /api/set_log_level endpoint for Logs page toggle
+    # Will be removed once upstream merges this feature
+    patch_log_level_api "$INSTALL_DIR"
     
     # =========================================================================
     # Step 5: Install dashboard and console extras
@@ -1283,18 +1279,13 @@ Continue?"; then
         return 1
     }
     
-    # Step 4: Apply patches and update dashboard
+    # Step 4: Apply log level API patch and update dashboard
     ((step_num++)) || true
-    print_step $step_num $total_steps "Applying pyMC Console patches & dashboard"
+    print_step $step_num $total_steps "Updating dashboard & log level API"
     
-    # Apply patches to /opt/pymc_repeater (the installed location)
-    print_info "Patching installed files..."
-    patch_api_endpoints "$INSTALL_DIR"           # PATCH 1: Radio config API endpoint
-    patch_logging_section "$INSTALL_DIR"         # PATCH 2: Ensure logging section exists
-    patch_log_level_api "$INSTALL_DIR"           # PATCH 3: Log level toggle API
-    patch_mesh_cli "$INSTALL_DIR"                # PATCH 4: MeshCore CLI parity
-    patch_stats_api "$INSTALL_DIR"               # PATCH 5: Extend stats API with MeshCore config
-    patch_private_key_api "$INSTALL_DIR"         # PATCH 6: Private key get/set API
+    # Apply single patch: POST /api/set_log_level endpoint for Logs page toggle
+    # Will be removed once upstream merges this feature
+    patch_log_level_api "$INSTALL_DIR"
 
     # Ensure --log-level DEBUG
     if [ -f /etc/systemd/system/pymc-repeater.service ]; then
@@ -2288,67 +2279,25 @@ run_upstream_installer() {
 # ============================================================================
 # PATCH REGISTRY
 # ============================================================================
-# Core patches that enhance pyMC_Repeater with pyMC Console features.
-# These patches are candidates for upstream PR submission.
+# Minimal patches for pyMC Console. Most functionality now provided natively
+# by upstream pyMC_Repeater dev branch.
 #
-# REMOVED (Merged Upstream in PR #36 - feat/identity branch):
-# - patch_api_endpoints - /api/update_radio_config endpoint
-# - patch_stats_api - Extended /api/stats with max_flood_hops, advert_interval_minutes, rx_delay_base
+# REMOVED (No longer needed - upstream provides natively):
+# - patch_api_endpoints - Merged upstream in PR #36
+# - patch_stats_api - Merged upstream in PR #36  
+# - patch_logging_section - Fixed in upstream dev branch (main.py lines 535-538)
+# - patch_mesh_cli - Not essential; Terminal.tsx uses /api/stats data directly
+# - patch_private_key_api - Use Identity Management API (/api/identities) instead
 #
-# Remaining Patches:
-#
-# 2. patch_logging_section (main.py)
-#    - Ensures config['logging'] exists before setting level from --log-level arg
-#    - Fixes KeyError when service starts with --log-level DEBUG
-#    - PR Status: Pending
+# REMAINING (Pending upstream PR):
 #
 # 3. patch_log_level_api (api_endpoints.py)
 #    - Adds POST /api/set_log_level endpoint
 #    - Allows web UI to toggle log level (INFO/DEBUG) and restart service
-#    - PR Status: Pending
+#    - PR Status: Pending - will be removed once merged upstream
 #
-# 4. patch_mesh_cli (mesh_cli.py)
-#    - Enhances mesh CLI with MeshCore CommonCLI.cpp parity
-#    - tempradio with auto-revert timer, reboot, stats-*, board, neighbor.remove
-#    - Implemented via external Python patch script (patches/mesh_cli_enhancements.py)
-#    - PR Status: Pending
-#
-# 6. patch_private_key_api (mesh_cli.py)
-#    - Adds get/set prv.key for private key management via Terminal
-#    - Stores key in config['mesh']['identity_key']
-#    - PR Status: Pending
-#
-# NOTE: patch_static_file_serving was removed
-# Upstream's default() method already returns index.html for all unknown routes,
-# which is exactly what a true SPA needs. React Router handles client-side routing.
-#
-# NOTE: GPIO patches (Fix A-D) were removed after discovery that the real issue
-# was a race condition in pymc_core's interrupt initialization. Adding --log-level
-# DEBUG to the service provides enough delay for the asyncio event loop to
-# initialize before interrupt callbacks are registered. See create_backend_service().
-#
-# To generate clean patches for upstream PR:
-#   1. Clone fresh pyMC_Repeater
-#   2. Apply patches via manage.sh upgrade
-#   3. git diff > patches/feature-name.patch
+# NOTE: GPIO timing issue is handled by --log-level DEBUG in service file.
 # ============================================================================
-
-# ------------------------------------------------------------------------------
-# PATCH 1: Radio Configuration API Endpoint [REMOVED - MERGED UPSTREAM PR #36]
-# ------------------------------------------------------------------------------
-# This patch was merged upstream in PR #36 to the feat/identity branch.
-# The patch is preserved below (commented out) for reference and for users
-# who may still be on main/dev branches before the PR is merged there.
-# ------------------------------------------------------------------------------
-
-# Patch removed - see PR #36: https://github.com/rightup/pyMC_Repeater/pull/36
-patch_api_endpoints() {
-    # DISABLED: This patch was merged upstream in PR #36 (feat/identity branch)
-    # See: https://github.com/rightup/pyMC_Repeater/pull/36
-    # The /api/update_radio_config endpoint is now part of upstream pyMC_Repeater
-    print_info "API endpoints patch skipped (merged upstream in PR #36)"
-    return 0
-}
 
 # ------------------------------------------------------------------------------
 # PATCH 3: Log Level API Endpoint
@@ -2469,182 +2418,6 @@ PATCHEOF
         print_success "Patched api_endpoints.py with set_log_level"
     else
         print_warning "Log level API patch may not have applied correctly"
-    fi
-}
-
-# ------------------------------------------------------------------------------
-# PATCH 2: Ensure logging section exists before setting level (main.py)
-# ------------------------------------------------------------------------------
-patch_logging_section() {
-    local target_dir="${1:-$CLONE_DIR}"
-    local main_file="$target_dir/repeater/main.py"
-
-    if [ ! -f "$main_file" ]; then
-        print_warning "main.py not found, skipping logging patch"
-        return 0
-    fi
-
-    # Check if already patched (upstream may have fixed this)
-    if grep -q 'if "logging" not in config' "$main_file" 2>/dev/null; then
-        print_info "Logging section already guarded (upstream fix)"
-        return 0
-    fi
-
-    # Only patch if the vulnerable pattern exists
-    if grep -q 'if args.log_level:' "$main_file" 2>/dev/null; then
-        python3 << PATCHEOF
-import io, sys
-path = "$main_file"
-with open(path, 'r') as f:
-    s = f.read()
-old = """
-    if args.log_level:
-        config[\"logging\"][\"level\"] = args.log_level
-"""
-new = """
-    if args.log_level:
-        if \"logging\" not in config:
-            config[\"logging\"] = {}
-        config[\"logging\"][\"level\"] = args.log_level
-"""
-if old in s and new not in s:
-    s = s.replace(old, new)
-else:
-    # Try a more flexible replacement using lines
-    lines = s.splitlines(True)
-    out = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.strip().startswith("if args.log_level"):
-            out.append(line)
-            i += 1
-            if i < len(lines) and "config[\"logging\"][\"level\"]" in lines[i]:
-                indent = lines[i].split('c')[0]  # leading spaces
-                out.append(f"{indent}if \"logging\" not in config:\n")
-                out.append(f"{indent}    config[\"logging\"] = {{}}\n")
-                out.append(lines[i])
-                i += 1
-                continue
-        out.append(line)
-        i += 1
-    s = ''.join(out)
-with open(path, 'w') as f:
-    f.write(s)
-print("Patched logging section in main.py")
-PATCHEOF
-        # Verify
-        if grep -q 'if "logging" not in config' "$main_file"; then
-            print_success "Patched logging section in main.py"
-        else
-            print_warning "Logging patch may not have applied"
-        fi
-    else
-        print_info "No log_level handling found - may be older version"
-    fi
-}
-
-# ------------------------------------------------------------------------------
-# PATCH 4: MeshCore CLI Parity (mesh_cli.py)
-# ------------------------------------------------------------------------------
-# File: repeater/handler_helpers/mesh_cli.py
-# Purpose: Enhance mesh CLI with MeshCore CommonCLI.cpp parity
-# Changes:
-#   - tempradio with auto-revert timer (saves config, reverts after timeout)
-#   - reboot via systemctl restart
-#   - neighbor.remove implementation
-#   - clear stats implementation
-#   - stats-packets, stats-radio, stats-core commands
-#   - board command for platform info
-# PR Status: Pending upstream submission
-# ------------------------------------------------------------------------------
-patch_mesh_cli() {
-    local target_dir="${1:-$CLONE_DIR}"
-    local mesh_cli_file="$target_dir/repeater/handler_helpers/mesh_cli.py"
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local patch_script="$script_dir/patches/mesh_cli_enhancements.py"
-    
-    if [ ! -f "$mesh_cli_file" ]; then
-        print_warning "mesh_cli.py not found, skipping MeshCore CLI patch"
-        return 0
-    fi
-    
-    # Check if already patched (look for our marker comment)
-    if grep -q 'pymc_console: tempradio' "$mesh_cli_file" 2>/dev/null; then
-        print_info "MeshCore CLI patch already applied"
-        return 0
-    fi
-    
-    # Check if patch script exists
-    if [ ! -f "$patch_script" ]; then
-        print_warning "Patch script not found: $patch_script"
-        print_info "Skipping MeshCore CLI enhancements"
-        return 0
-    fi
-    
-    # Run the Python patch script
-    if python3 "$patch_script" "$mesh_cli_file" 2>/dev/null; then
-        print_success "Applied MeshCore CLI parity patch"
-    else
-        print_warning "MeshCore CLI patch may not have applied correctly"
-    fi
-}
-
-# ------------------------------------------------------------------------------
-# PATCH 5: Stats API Extension [REMOVED - MERGED UPSTREAM PR #36]
-# ------------------------------------------------------------------------------
-# This patch was merged upstream in PR #36 to the feat/identity branch.
-# The /api/stats endpoint now includes max_flood_hops, advert_interval_minutes,
-# and rx_delay_base in the response.
-# ------------------------------------------------------------------------------
-
-# Patch removed - see PR #36: https://github.com/rightup/pyMC_Repeater/pull/36
-patch_stats_api() {
-    # Patch disabled - merged upstream in PR #36 (feat/identity branch)
-    print_info "Stats API patch skipped (merged upstream in PR #36)"
-    return 0
-}
-
-# ------------------------------------------------------------------------------
-# PATCH 6: Private Key API (mesh_cli.py)
-# ------------------------------------------------------------------------------
-# File: repeater/handler_helpers/mesh_cli.py
-# Purpose: Enable get/set prv.key for private key management via Terminal
-# Changes:
-#   - get prv.key: Returns 32-byte Ed25519 signing key seed in hex
-#   - set prv.key: Stores key in config['mesh']['identity_key'], requires restart
-# Security: Only accessible to admin users via authenticated CLI
-# PR Status: Pending upstream submission
-# ------------------------------------------------------------------------------
-patch_private_key_api() {
-    local target_dir="${1:-$CLONE_DIR}"
-    local mesh_cli_file="$target_dir/repeater/handler_helpers/mesh_cli.py"
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local patch_script="$script_dir/patches/private_key_api.py"
-    
-    if [ ! -f "$mesh_cli_file" ]; then
-        print_warning "mesh_cli.py not found, skipping private key API patch"
-        return 0
-    fi
-    
-    # Check if already patched
-    if grep -q 'pymc_console: prv.key' "$mesh_cli_file" 2>/dev/null; then
-        print_info "Private key API patch already applied"
-        return 0
-    fi
-    
-    # Check if patch script exists
-    if [ ! -f "$patch_script" ]; then
-        print_warning "Patch script not found: $patch_script"
-        print_info "Skipping private key API"
-        return 0
-    fi
-    
-    # Run the Python patch script
-    if python3 "$patch_script" "$mesh_cli_file" 2>/dev/null; then
-        print_success "Applied private key API patch"
-    else
-        print_warning "Private key API patch may not have applied correctly"
     fi
 }
 
