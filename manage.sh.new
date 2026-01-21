@@ -329,6 +329,11 @@ do_upgrade() {
         fi
     fi
     
+    # Capture current versions before upgrade
+    local core_before=$(get_core_version)
+    local rep_before=$(get_repeater_version)
+    local ui_before=$(get_console_version)
+    
     # Get current branch
     local branch="$DEFAULT_BRANCH"
     if [[ -d "$CLONE_DIR/.git" ]]; then
@@ -356,9 +361,23 @@ do_upgrade() {
     
     # Done
     local ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    local core_after=$(get_core_version)
+    local rep_after=$(get_repeater_version)
+    local ui_after=$(get_console_version)
+    
     echo ""
     echo -e "${GREEN}${BOLD}Upgrade Complete!${NC}"
-    print_version_summary
+    echo ""
+    echo -e "  ${DIM}Versions:${NC}"
+    [[ "$core_before" != "$core_after" ]] \
+        && echo -e "    pyMC Core:     ${DIM}$core_before${NC} → ${CYAN}$core_after${NC}" \
+        || echo -e "    pyMC Core:     ${CYAN}$core_after${NC}"
+    [[ "$rep_before" != "$rep_after" ]] \
+        && echo -e "    pyMC Repeater: ${DIM}$rep_before${NC} → ${CYAN}$rep_after${NC}" \
+        || echo -e "    pyMC Repeater: ${CYAN}$rep_after${NC}"
+    [[ "$ui_before" != "$ui_after" ]] \
+        && echo -e "    pyMC Console:  ${DIM}v$ui_before${NC} → ${CYAN}v$ui_after${NC}" \
+        || echo -e "    pyMC Console:  ${CYAN}v$ui_after${NC}"
     echo ""
     echo -e "  Dashboard: ${CYAN}http://$ip:8000/${NC}"
     echo ""
