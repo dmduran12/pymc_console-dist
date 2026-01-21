@@ -245,31 +245,59 @@ install_dashboard() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 do_install() {
-    if is_installed; then
-        show_error "Already installed. Use 'upgrade' or 'uninstall' first."
-        return 1
-    fi
-    
     if [[ "$EUID" -ne 0 ]]; then
         show_error "Installation requires root.\n\nRun: sudo $0 install"
         return 1
     fi
     
-    # Branch selection
-    local branch="${1:-}"
-    if [[ -z "$branch" ]]; then
-        branch=$($DIALOG --backtitle "pyMC Console" --title "Select Branch" --menu \
-            "\nSelect pyMC_Repeater branch:" 14 50 3 \
-            "dev"  "Development (recommended)" \
-            "main" "Stable release" \
-            "custom" "Enter custom branch" 3>&1 1>&2 2>&3) || return 0
-        
-        if [[ "$branch" == "custom" ]]; then
-            branch=$($DIALOG --backtitle "pyMC Console" --inputbox "Branch name:" 8 40 "dev" 3>&1 1>&2 2>&3) || return 0
+    # Check if pyMC_Repeater already installed
+    local repeater_exists=false
+    is_installed && repeater_exists=true
+    
+    # Installation type selection (interactive only)
+    local install_type="${1:-}"
+    if [[ -z "$install_type" ]]; then
+        if [[ "$repeater_exists" == true ]]; then
+            # Repeater exists - only offer console
+            install_type="console"
+            show_info "Existing Installation" "pyMC_Repeater detected.\n\nInstalling Console dashboard only."
+        else
+            # Fresh system - offer choice
+            install_type=$($DIALOG --backtitle "pyMC Console" --title "Installation Type" --menu \
+                "\nSelect what to install:" 14 55 2 \
+                "full"    "Full Stack (pyMC_Repeater + Console)" \
+                "console" "Console Only (dashboard for existing install)" \
+                3>&1 1>&2 2>&3) || return 0
         fi
     fi
     
+    case "$install_type" in
+        full)    do_install_full ;;
+        console) do_install_console ;;
+        *)       show_error "Unknown install type: $install_type"; return 1 ;;
+    esac
+}
+
+do_install_full() {
+    if is_installed; then
+        show_error "pyMC_Repeater already installed.\n\nUse 'upgrade' or choose Console-only install."
+        return 1
+    fi
+    
+    # Branch selection
+    local branch
+    branch=$($DIALOG --backtitle "pyMC Console" --title "Select Branch" --menu \
+        "\nSelect pyMC_Repeater branch:" 14 50 3 \
+        "dev"  "Development (recommended)" \
+        "main" "Stable release" \
+        "custom" "Enter custom branch" 3>&1 1>&2 2>&3) || return 0
+    
+    if [[ "$branch" == "custom" ]]; then
+        branch=$($DIALOG --backtitle "pyMC Console" --inputbox "Branch name:" 8 40 "dev" 3>&1 1>&2 2>&3) || return 0
+    fi
+    
     print_banner
+    echo -e "  ${DIM}Mode: Full Stack${NC}"
     echo -e "  ${DIM}Branch: $branch${NC}"
     
     # Step 1: Clone upstream
@@ -293,6 +321,37 @@ do_install() {
     echo -e "  Dashboard: ${CYAN}http://$ip:8000/${NC}"
     echo ""
     echo -e "  ${DIM}Configure radio: cd $CLONE_DIR && sudo ./manage.sh${NC}"
+    echo ""
+}
+
+do_install_console() {
+    if ! is_installed; then
+        show_error "pyMC_Repeater not found.\n\nUse Full Stack install or install pyMC_Repeater first."
+        return 1
+    fi
+    
+    if [[ -d "$UI_DIR" ]]; then
+        if ! ask_yes_no "Console Exists" "Console dashboard already installed.\n\nReinstall?"; then
+            return 0
+        fi
+    fi
+    
+    print_banner
+    echo -e "  ${DIM}Mode: Console Only${NC}"
+    
+    # Single step: Install dashboard
+    print_step 1 1 "Installing dashboard"
+    install_dashboard
+    
+    # Done
+    local ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    echo ""
+    echo -e "${GREEN}${BOLD}Console Installed!${NC}"
+    echo ""
+    echo -e "  ${DIM}Versions:${NC}"
+    echo -e "    pyMC Console:  ${CYAN}v$(get_console_version)${NC}"
+    echo ""
+    echo -e "  Dashboard: ${CYAN}http://$ip:8000/${NC}"
     echo ""
 }
 
@@ -515,13 +574,15 @@ pyMC Console - Dashboard Overlay Manager
 Usage: $0 [command]
 
 Commands:
-  install     Fresh installation
-  upgrade     Upgrade existing installation
-  uninstall   Remove everything
-  start       Start service
-  stop        Stop service  
-  restart     Restart service
-  status      Show versions and status
+  install [full|console]  Fresh installation (default: interactive)
+                          full    - pyMC_Repeater + Console dashboard
+                          console - Dashboard only (existing Repeater)
+  upgrade                 Upgrade existing installation
+  uninstall               Remove everything
+  start                   Start service
+  stop                    Stop service  
+  restart                 Restart service
+  status                  Show versions and status
 
 Run without arguments for interactive menu.
 
@@ -531,7 +592,7 @@ EOF
 
 case "${1:-}" in
     -h|--help)  show_help ;;
-    install)    setup_dialog; do_install "$2" ;;
+    install)    setup_dialog; do_install "${2:-}" ;;
     upgrade)    setup_dialog; do_upgrade ;;
     uninstall)  setup_dialog; do_uninstall ;;
     start)      do_start ;;
