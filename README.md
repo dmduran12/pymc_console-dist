@@ -7,7 +7,6 @@ A modern web dashboard for monitoring and managing your [MeshCore](https://meshc
 
 Built on [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) by [RightUp](https://github.com/rightup), pyMC Console provides real-time visibility into your mesh network with an intuitive, feature-rich interface.
 
-![Topology Analysis Overview](docs/images/analyzer-overview.gif)
 
 ## How It All Fits Together
 
