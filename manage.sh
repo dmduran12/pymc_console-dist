@@ -89,7 +89,6 @@ CONFIG_DIR="/etc/pymc_repeater"
 LOG_DIR="/var/log/pymc_repeater"
 SERVICE_USER="repeater"
 
-# Legacy alias for compatibility
 REPEATER_DIR="$INSTALL_DIR"
 
 # Service name (backend serves both API and static frontend)
@@ -268,221 +267,6 @@ run_with_elapsed_time() {
         echo -e "${CROSS} ${RED}$description${NC} ${DIM}(${mins}m ${secs}s)${NC}"
         echo -e "        ${DIM}Log output:${NC}"
         tail -20 "$log_file" | sed 's/^/        /' 
-        rm -f "$log_file"
-        return 1
-    fi
-}
-
-# Run pip install with real progress bar
-# Parses pip output to show download/install progress
-run_pip_with_progress() {
-    local description="$1"
-    shift
-    local cmd="$@"
-    local log_file=$(mktemp)
-    local progress_file=$(mktemp)
-    local pid
-    local start_time=$(date +%s)
-    local width=30
-    
-    # Start command in background, capturing output for parsing
-    eval "$cmd" 2>&1 | tee "$log_file" | while IFS= read -r line; do
-        # Look for pip progress indicators
-        if [[ "$line" =~ Downloading\ .*\ \(([0-9.]+)\ ([kMG]?B)\) ]]; then
-            echo "Downloading..." > "$progress_file"
-        elif [[ "$line" =~ Installing\ collected\ packages ]]; then
-            echo "Installing..." > "$progress_file"
-        elif [[ "$line" =~ Successfully\ installed ]]; then
-            echo "Done" > "$progress_file"
-        fi
-    done &
-    pid=$!
-    
-    # Show progress while command runs
-    local phase="Starting"
-    printf "        ${ARROW} %s " "$description"
-    while kill -0 $pid 2>/dev/null; do
-        local elapsed=$(($(date +%s) - start_time))
-        local mins=$((elapsed / 60))
-        local secs=$((elapsed % 60))
-        
-        # Read current phase if available
-        [ -f "$progress_file" ] && phase=$(cat "$progress_file" 2>/dev/null || echo "$phase")
-        
-        # Build animated bar
-        local anim_pos=$(( (elapsed * 2) % width ))
-        local bar=""
-        for ((i=0; i<width; i++)); do
-            if [ $i -eq $anim_pos ] || [ $i -eq $((anim_pos + 1)) ]; then
-                bar+="█"
-            else
-                bar+="░"
-            fi
-        done
-        
-        printf "\r        ${CYAN}[${bar}]${NC} %s ${DIM}(%dm %02ds)${NC}  " "$phase" $mins $secs
-        sleep 0.5
-    done
-    
-    # Get exit status
-    wait $pid
-    local exit_code=$?
-    local elapsed=$(($(date +%s) - start_time))
-    local mins=$((elapsed / 60))
-    local secs=$((elapsed % 60))
-    
-    # Cleanup
-    rm -f "$progress_file"
-    
-    # Clear line and show result
-    printf "\r%-80s\r" " "  # Clear the line
-    if [ $exit_code -eq 0 ]; then
-        echo -e "        ${CHECK} $description ${DIM}(${mins}m ${secs}s)${NC}"
-        rm -f "$log_file"
-        return 0
-    else
-        echo -e "        ${CROSS} ${RED}$description${NC} ${DIM}(${mins}m ${secs}s)${NC}"
-        echo -e "        ${DIM}Log output:${NC}"
-        tail -20 "$log_file" | sed 's/^/        /' 
-        rm -f "$log_file"
-        return 1
-    fi
-}
-
-# Attempt cubic-in-out easing using bash integer math (approximation)
-# Returns position 0-100 given input 0-100
-cubic_ease_inout() {
-    local t=$1  # 0-100
-    if [ $t -lt 50 ]; then
-        # Ease in: 4 * t^3 (scaled)
-        echo $(( (4 * t * t * t) / 10000 ))
-    else
-        # Ease out: 1 - (-2t + 2)^3 / 2
-        local p=$((100 - t))
-        echo $(( 100 - (4 * p * p * p) / 10000 ))
-    fi
-}
-
-# Calculate velocity (derivative) of cubic ease-in-out at point t
-# Returns 0-100 where 100 is max velocity (at t=50, the inflection point)
-cubic_ease_velocity() {
-    local t=$1  # 0-100
-    # Derivative of cubic ease-in-out: 6t(1-t) scaled to 0-100
-    # Max velocity occurs at t=50 (middle of the curve)
-    # At t=0 or t=100, velocity is 0 (stationary at endpoints)
-    local velocity=$(( (6 * t * (100 - t)) / 100 ))
-    # Normalize to 0-100 range (max is 150 at t=50, so scale by 2/3)
-    echo $(( (velocity * 100) / 150 ))
-}
-
-# Run npm with animated progress bar
-run_npm_with_progress() {
-    local description="$1"
-    shift
-    local cmd="$@"
-    local log_file=$(mktemp)
-    local pid
-    local start_time=$(date +%s)
-    local width=40
-    local cycle_frames=40  # frames per half-cycle (faster, smoother animation)
-    local cursor_width=2   # narrower cursor for higher fidelity
-    
-    # Start command in background
-    eval "$cmd" > "$log_file" 2>&1 &
-    pid=$!
-    
-    # Show animated progress bar while command runs
-    printf "        ${ARROW} %s " "$description"
-    local frame=0
-    while kill -0 $pid 2>/dev/null; do
-        local elapsed=$(($(date +%s) - start_time))
-        local mins=$((elapsed / 60))
-        local secs=$((elapsed % 60))
-        
-        # Calculate position in cycle (0 to cycle_frames*2)
-        local cycle_pos=$(( frame % (cycle_frames * 2) ))
-        local going_right=1
-        [ $cycle_pos -ge $cycle_frames ] && going_right=0
-        
-        # Get linear position within half-cycle (0-100)
-        local linear_t
-        if [ $going_right -eq 1 ]; then
-            linear_t=$(( (cycle_pos * 100) / cycle_frames ))
-        else
-            linear_t=$(( ((cycle_frames * 2 - cycle_pos) * 100) / cycle_frames ))
-        fi
-        
-        # Apply cubic easing
-        local eased_t=$(cubic_ease_inout $linear_t)
-        
-        # Calculate velocity for motion blur and glow effects
-        local velocity=$(cubic_ease_velocity $linear_t)
-        
-        # Convert to bar position
-        local anim_pos=$(( (eased_t * (width - cursor_width)) / 100 ))
-        
-        # Determine trail intensity based on velocity (motion blur when fast)
-        # velocity 0-60: no trail, 60-85: near trail, 85+: full trail
-        local show_near_trail=0
-        [ $velocity -gt 60 ] && show_near_trail=1
-        local show_far_trail=0
-        [ $velocity -gt 85 ] && show_far_trail=1
-        
-        # Glow on cursor at apex velocity (tight window: 90-100%)
-        local cursor_glow=0
-        [ $velocity -gt 90 ] && cursor_glow=1
-        
-        # Build bar with velocity-based effects
-        local bar=""
-        for ((j=0; j<width; j++)); do
-            local dist_from_cursor
-            if [ $j -lt $anim_pos ]; then
-                dist_from_cursor=$((anim_pos - j))
-            elif [ $j -ge $((anim_pos + cursor_width)) ]; then
-                dist_from_cursor=$((j - anim_pos - cursor_width + 1))
-            else
-                dist_from_cursor=0
-            fi
-            
-            # Build character with motion blur effect
-            if [ $dist_from_cursor -eq 0 ]; then
-                # Solid cursor - glow at apex velocity (just turns white)
-                if [ $cursor_glow -eq 1 ]; then
-                    bar+="${WHITE}█${CYAN}"  # White cursor at peak velocity
-                else
-                    bar+="█"  # Normal cyan cursor
-                fi
-            elif [ $dist_from_cursor -eq 1 ] && [ $show_near_trail -eq 1 ]; then
-                bar+="▓"  # Near motion blur - appears when moving
-            elif [ $dist_from_cursor -eq 2 ] && [ $show_far_trail -eq 1 ]; then
-                bar+="▒"  # Far motion blur - only at high speed  
-            else
-                bar+="░"  # Empty background
-            fi
-        done
-        
-        printf "\r        ${CYAN}[${bar}]${NC} %s ${DIM}(%dm %02ds)${NC}  " "$description" $mins $secs
-        sleep 0.033  # ~30fps for smoother animation
-        ((frame++)) || true
-    done
-    
-    # Get exit status
-    wait $pid
-    local exit_code=$?
-    local elapsed=$(($(date +%s) - start_time))
-    local mins=$((elapsed / 60))
-    local secs=$((elapsed % 60))
-    
-    # Clear line and show result
-    printf "\r%-80s\r" " "  # Clear the line
-    if [ $exit_code -eq 0 ]; then
-        echo -e "        ${CHECK} $description ${DIM}(${mins}m ${secs}s)${NC}"
-        rm -f "$log_file"
-        return 0
-    else
-        echo -e "        ${CROSS} ${RED}$description${NC} ${DIM}(${mins}m ${secs}s)${NC}"
-        echo -e "        ${DIM}Log output:${NC}"
-        tail -30 "$log_file" | sed 's/^/        /' 
         rm -f "$log_file"
         return 1
     fi
@@ -865,7 +649,7 @@ do_install() {
     echo -e "  ${DIM}Clone: $CLONE_DIR${NC}"
     echo -e "  ${DIM}Install: $INSTALL_DIR${NC}"
     
-    local total_steps=6
+    local total_steps=5
     
     # =========================================================================
     # Step 1: Install prerequisites (whiptail needed by upstream)
@@ -936,18 +720,9 @@ do_install() {
     }
     
     # =========================================================================
-    # Step 4: Apply log level API patch
+    # Step 4: Install dashboard and console extras
     # =========================================================================
-    print_step 4 $total_steps "Configuring log level API"
-    
-    # Apply single patch: POST /api/set_log_level endpoint for Logs page toggle
-    # Will be removed once upstream merges this feature
-    patch_log_level_api "$INSTALL_DIR"
-    
-    # =========================================================================
-    # Step 5: Install dashboard and console extras
-    # =========================================================================
-    print_step 5 $total_steps "Installing pyMC Console dashboard"
+    print_step 4 $total_steps "Installing pyMC Console dashboard"
     
     # Create console directory for our extras
     mkdir -p "$CONSOLE_DIR"
@@ -973,9 +748,9 @@ do_install() {
     chown -R "$SERVICE_USER:$SERVICE_USER" "$CONSOLE_DIR" 2>/dev/null || true
     
     # =========================================================================
-    # Step 6: Finalize installation
+    # Step 5: Finalize installation
     # =========================================================================
-    print_step 6 $total_steps "Finalizing installation"
+    print_step 5 $total_steps "Finalizing installation"
     
     # Stop service for now - we'll start it after user configures radio
     # Upstream may have started it, so stop to avoid running with default config
@@ -1318,13 +1093,9 @@ Continue?"; then
         return 1
     }
     
-    # Step 4: Apply log level API patch and update dashboard
+    # Step 4: Update dashboard
     ((step_num++)) || true
-    print_step $step_num $total_steps "Updating dashboard & log level API"
-    
-    # Apply single patch: POST /api/set_log_level endpoint for Logs page toggle
-    # Will be removed once upstream merges this feature
-    patch_log_level_api "$INSTALL_DIR"
+    print_step $step_num $total_steps "Updating dashboard"
 
     # Ensure --log-level DEBUG
     if [ -f /etc/systemd/system/pymc-repeater.service ]; then
@@ -2316,178 +2087,6 @@ run_upstream_installer() {
     fi
 }
 
-# ============================================================================
-# PATCH REGISTRY
-# ============================================================================
-# Minimal patches for pyMC Console. Most functionality now provided natively
-# by upstream pyMC_Repeater dev branch.
-#
-# REMOVED (No longer needed - upstream provides natively):
-# - patch_api_endpoints - Merged upstream in PR #36
-# - patch_stats_api - Merged upstream in PR #36  
-# - patch_logging_section - Fixed in upstream dev branch (main.py lines 535-538)
-# - patch_mesh_cli - Not essential; Terminal.tsx uses /api/stats data directly
-# - patch_private_key_api - Use Identity Management API (/api/identities) instead
-#
-# REMAINING (Pending upstream PR):
-#
-# 3. patch_log_level_api (api_endpoints.py)
-#    - Adds POST /api/set_log_level endpoint
-#    - Allows web UI to toggle log level (INFO/DEBUG) and restart service
-#    - PR Status: Pending - will be removed once merged upstream
-#
-# NOTE: GPIO timing issue is handled by --log-level DEBUG in service file.
-# ============================================================================
-
-# ------------------------------------------------------------------------------
-# PATCH 3: Log Level API Endpoint
-# ------------------------------------------------------------------------------
-# File: repeater/web/api_endpoints.py
-# Purpose: Allow web UI to toggle log level (INFO/DEBUG) without SSH
-# Changes:
-#   - Add POST /api/set_log_level endpoint
-#   - Updates config.yaml -> logging.level
-#   - Restarts pymc-repeater service to apply change
-#   - Returns success/failure
-# ------------------------------------------------------------------------------
-patch_log_level_api() {
-    local target_dir="${1:-$CLONE_DIR}"
-    local api_file="$target_dir/repeater/web/api_endpoints.py"
-    
-    if [ ! -f "$api_file" ]; then
-        print_warning "api_endpoints.py not found, skipping log level patch"
-        return 0
-    fi
-    
-    # Check if already patched
-    if grep -q 'def set_log_level' "$api_file" 2>/dev/null; then
-        print_info "Log level API already patched"
-        return 0
-    fi
-    
-    # Use Python to add the endpoint
-    python3 << PATCHEOF
-import re
-
-api_file = "$api_file"
-
-with open(api_file, 'r') as f:
-    content = f.read()
-
-# Add set_log_level endpoint after update_radio_config (or save_cad_settings if radio config not present)
-set_log_level_code = '''
-
-    @cherrypy.expose
-    @cherrypy.tools.json_out()
-    @cherrypy.tools.json_in()
-    def set_log_level(self):
-        """Set log level and restart service to apply
-        
-        POST /api/set_log_level
-        Body: {"level": "DEBUG" | "INFO" | "WARNING"}
-        
-        Returns: {"success": true, "data": {"level": "DEBUG", "restarting": true}}
-        """
-        import subprocess
-        try:
-            self._require_post()
-            data = cherrypy.request.json or {}
-            
-            level = data.get("level", "").upper()
-            if level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
-                return self._error("Invalid log level. Use DEBUG, INFO, WARNING, or ERROR")
-            
-            # Update config.yaml
-            config_path = getattr(self, '_config_path', '/etc/pymc_repeater/config.yaml')
-            
-            # Ensure logging section exists
-            if "logging" not in self.config:
-                self.config["logging"] = {}
-            self.config["logging"]["level"] = level
-            
-            # Save config
-            self._save_config_to_file(config_path)
-            
-            logger.info(f"Log level changed to {level}, restarting service...")
-            
-            # Schedule service restart in background (so we can return response first)
-            # Use subprocess.Popen to not wait for completion
-            subprocess.Popen(
-                ["systemctl", "restart", "pymc-repeater"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
-            
-            return self._success({
-                "level": level,
-                "restarting": True,
-                "message": f"Log level set to {level}. Service restarting..."
-            })
-            
-        except cherrypy.HTTPError:
-            raise
-        except Exception as e:
-            logger.error(f"Error setting log level: {e}")
-            return self._error(str(e))
-'''
-
-# Find insertion point - after update_radio_config if it exists, otherwise after save_cad_settings
-if 'def update_radio_config' in content:
-    # Insert after update_radio_config
-    pattern = r'(    def update_radio_config\(self\):.*?return self\._error\(str\(e\)\))'
-    match = re.search(pattern, content, re.DOTALL)
-    if match:
-        insert_pos = match.end()
-        content = content[:insert_pos] + set_log_level_code + content[insert_pos:]
-else:
-    # Fall back to inserting after save_cad_settings
-    pattern = r'(    def save_cad_settings\(self\):.*?return self\._error\(e\))'
-    match = re.search(pattern, content, re.DOTALL)
-    if match:
-        insert_pos = match.end()
-        content = content[:insert_pos] + set_log_level_code + content[insert_pos:]
-
-with open(api_file, 'w') as f:
-    f.write(content)
-print("Patched api_endpoints.py with set_log_level")
-PATCHEOF
-    
-    # Verify patch was applied
-    if grep -q 'def set_log_level' "$api_file" 2>/dev/null; then
-        print_success "Patched api_endpoints.py with set_log_level"
-    else
-        print_warning "Log level API patch may not have applied correctly"
-    fi
-}
-
-install_backend_service() {
-    # Copy upstream's service file as base (from clone directory)
-    local service_file="$CLONE_DIR/pymc-repeater.service"
-    
-    # Fall back to install dir if clone doesn't have it
-    if [ ! -f "$service_file" ] && [ -f "$INSTALL_DIR/pymc-repeater.service" ]; then
-        service_file="$INSTALL_DIR/pymc-repeater.service"
-    fi
-    
-    if [ -f "$service_file" ]; then
-        cp "$service_file" /etc/systemd/system/pymc-repeater.service
-        
-        # WORKAROUND: Add --log-level DEBUG to fix pymc_core timing bug on Pi 5
-        # Issue: asyncio event loop not ready when interrupt callbacks register
-        # The DEBUG flag slows down initialization enough for the event loop to start
-        # TODO: File upstream issue at github.com/rightup/pyMC_core
-        sed -i 's|--config /etc/pymc_repeater/config.yaml$|--config /etc/pymc_repeater/config.yaml --log-level DEBUG|' \
-            /etc/systemd/system/pymc-repeater.service
-        
-        print_success "Installed upstream service file"
-        print_info "Added --log-level DEBUG for RX timing fix"
-    else
-        print_error "Service file not found in pyMC_Repeater repo"
-        return 1
-    fi
-}
-
 # GitHub repository for UI releases (public distribution repo)
 UI_REPO="dmduran12/pymc_console-dist"
 UI_RELEASE_URL="https://github.com/${UI_REPO}/releases"
@@ -2617,44 +2216,6 @@ install_static_frontend() {
     print_info "Dashboard will be served at http://<ip>:8000/"
     
     return 0
-}
-
-# Get available UI versions from GitHub
-get_ui_versions() {
-    local releases
-    releases=$(curl -s "https://api.github.com/repos/${UI_REPO}/releases" 2>/dev/null | 
-               grep -oP '"tag_name":\s*"\K[^"]+' | head -10)
-    echo "$releases"
-}
-
-merge_config() {
-    local user_config="$1"
-    local example_config="$2"
-    
-    if [ ! -f "$user_config" ] || [ ! -f "$example_config" ]; then
-        echo "    Config merge skipped (files not found)"
-        return 0
-    fi
-    
-    if ! command -v yq &> /dev/null; then
-        echo "    Config merge skipped (yq not available)"
-        return 0
-    fi
-    
-    local temp_merged="${user_config}.merged"
-    
-    if yq eval-all '. as $item ireduce ({}; . * $item)' "$example_config" "$user_config" > "$temp_merged" 2>/dev/null; then
-        if yq eval '.' "$temp_merged" > /dev/null 2>&1; then
-            mv "$temp_merged" "$user_config"
-            echo "    ✓ Configuration merged (user settings preserved, new options added)"
-        else
-            rm -f "$temp_merged"
-            echo "    ⚠ Merge validation failed, keeping original"
-        fi
-    else
-        rm -f "$temp_merged"
-        echo "    ⚠ Merge failed, keeping original"
-    fi
 }
 
 # ============================================================================
