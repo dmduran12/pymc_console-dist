@@ -1328,10 +1328,11 @@ Continue?"; then
     echo ""
     # Get branch info from the updated clone
     local core_branch=$(get_core_branch_from_toml "$CLONE_DIR")
+    local repeater_branch=$(get_repeater_branch)
     
     echo -e "  ${BOLD}Versions:${NC}"
     echo -e "  ${CHECK} pyMC Core:     ${DIM}v${current_core_ver}${NC} → ${CYAN}v${new_core_ver}${NC}  ${DIM}@${core_branch}${NC}"
-    echo -e "  ${CHECK} pyMC Repeater: ${DIM}v${current_repeater_ver}${NC} → ${CYAN}v${new_repeater_ver}${NC}  ${DIM}@${branch}${NC}"
+    echo -e "  ${CHECK} pyMC Repeater: ${DIM}v${current_repeater_ver}${NC} → ${CYAN}v${new_repeater_ver}${NC}  ${DIM}@${repeater_branch}${NC}"
     echo -e "  ${CHECK} pyMC Console:  ${DIM}${current_console_ver}${NC} → ${CYAN}${new_console_ver}${NC}"
     echo ""
     echo -e "  ${CHECK} Configuration preserved"
