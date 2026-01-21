@@ -447,7 +447,18 @@ do_upgrade() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 do_uninstall() {
-    if ! is_installed && [[ ! -d "$CONSOLE_DIR" ]]; then
+    # Check if there's anything to uninstall
+    local has_repeater=false
+    local has_console=false
+    local has_clone=false
+    local has_self=false
+    
+    is_installed && has_repeater=true
+    [[ -d "$CONSOLE_DIR" ]] && has_console=true
+    [[ -d "$CLONE_DIR" ]] && has_clone=true
+    [[ -d "$SCRIPT_DIR/.git" ]] && has_self=true
+    
+    if [[ "$has_repeater" == false && "$has_console" == false && "$has_clone" == false ]]; then
         show_error "Nothing to uninstall."
         return 1
     fi
@@ -457,43 +468,70 @@ do_uninstall() {
         return 1
     fi
     
-    if ! ask_yes_no "Confirm Uninstall" "\nThis will completely remove:\n• pyMC_Repeater\n• pyMC Console dashboard\n• All configuration\n\nThis cannot be undone!\n\nContinue?"; then
+    # Build description of what will be removed
+    local will_remove=""
+    [[ "$has_repeater" == true ]] && will_remove+="• pyMC_Repeater\n"
+    [[ "$has_console" == true ]] && will_remove+="• pyMC Console dashboard\n"
+    [[ "$has_clone" == true ]] && will_remove+="• pyMC_Repeater clone\n"
+    will_remove+="• All configuration"
+    
+    if ! ask_yes_no "Confirm Uninstall" "\nThis will remove:\n${will_remove}\n\nThis cannot be undone!\n\nContinue?"; then
         return 0
     fi
     
     print_banner
     
-    # Step 1: Run upstream uninstall (if available)
-    print_step 1 2 "Removing pyMC_Repeater"
-    if [[ -f "$CLONE_DIR/manage.sh" ]]; then
-        # Run upstream uninstaller in subshell to isolate exit behavior
-        # (upstream may have its own set -e or exit calls)
-        (
-            set +e  # Disable errexit in subshell
-            cd "$CLONE_DIR" && bash manage.sh uninstall
-        ) || true
-    else
-        # Manual cleanup if upstream not available
-        systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-        systemctl disable "$SERVICE_NAME" 2>/dev/null || true
-        rm -f /etc/systemd/system/pymc-repeater.service
-        systemctl daemon-reload
-        rm -rf "$INSTALL_DIR" "$CONFIG_DIR" /var/log/pymc_repeater
-        pip3 uninstall -y pymc_repeater pymc_core 2>/dev/null || true
-        userdel repeater 2>/dev/null || true
+    local step=1
+    local total=2
+    [[ "$has_clone" == true ]] && ((total++))
+    [[ "$has_self" == true ]] && ((total++))
+    
+    # Step: Run upstream uninstall (if Repeater installed)
+    if [[ "$has_repeater" == true ]]; then
+        print_step $step $total "Removing pyMC_Repeater"
+        if [[ -f "$CLONE_DIR/manage.sh" ]]; then
+            # Run upstream in completely separate bash process
+            # Use script -q to capture and isolate the entire session
+            bash -c 'cd "'"$CLONE_DIR"'" && bash manage.sh uninstall' </dev/tty || true
+        else
+            # Manual cleanup if upstream not available
+            systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+            systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+            rm -f /etc/systemd/system/pymc-repeater.service
+            systemctl daemon-reload
+            rm -rf "$INSTALL_DIR" "$CONFIG_DIR" /var/log/pymc_repeater
+            pip3 uninstall -y pymc_repeater pymc_core 2>/dev/null || true
+            userdel repeater 2>/dev/null || true
+        fi
+        print_success "pyMC_Repeater removed"
+        ((step++))
     fi
-    print_success "pyMC_Repeater removed"
     
-    # Step 2: Remove our overlay
-    print_step 2 2 "Removing dashboard"
+    # Step: Remove dashboard overlay
+    print_step $step $total "Removing dashboard"
     rm -rf "$CONSOLE_DIR"
-    print_success "Dashboard removed"
+    print_success "Dashboard removed ($CONSOLE_DIR)"
+    ((step++))
     
-    # Offer to remove clone
-    if [[ -d "$CLONE_DIR" ]]; then
-        if ask_yes_no "Remove Clone?" "\nRemove pyMC_Repeater clone at:\n$CLONE_DIR?"; then
-            rm -rf "$CLONE_DIR"
-            print_success "Clone removed"
+    # Step: Remove clone
+    if [[ "$has_clone" == true ]]; then
+        print_step $step $total "Removing pyMC_Repeater clone"
+        rm -rf "$CLONE_DIR"
+        print_success "Clone removed ($CLONE_DIR)"
+        ((step++))
+    fi
+    
+    # Step: Offer to remove pymc_console repo itself
+    if [[ "$has_self" == true ]]; then
+        print_step $step $total "pymc_console repo"
+        if ask_yes_no "Remove pymc_console?" "\nRemove pymc_console repo at:\n$SCRIPT_DIR?\n\n(You're running this script from there)"; then
+            # Schedule self-deletion after script exits
+            echo ""
+            echo -e "${YELLOW}Removing $SCRIPT_DIR after exit...${NC}"
+            trap "rm -rf '$SCRIPT_DIR'" EXIT
+            print_success "Scheduled for removal"
+        else
+            print_info "Keeping $SCRIPT_DIR"
         fi
     fi
     
