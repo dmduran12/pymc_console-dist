@@ -1,1 +1,0 @@
-import{a as e}from"./vendor-react-DCIF8YoJ.js";function r(r,t,n=!0,c=!1){const u=e.useRef(r);e.useEffect(()=>{u.current=r},[r]),e.useEffect(()=>{if(!n)return;c||u.current();const e=setInterval(()=>{u.current()},t);return()=>clearInterval(e)},[t,n,c])}export{r as u};
