@@ -1,6 +1,6 @@
 {
   "name": "pymc_console",
-  "version": "0.9.193",
+  "version": "0.9.194",
   "description": "Vite + React Dashboard for pyMC_Repeater",
   "private": true,
   "type": "module",
@@ -14,6 +14,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@cosmograph/react": "^2.0.1",
     "@deck.gl/aggregation-layers": "^9.2.5",
     "@deck.gl/core": "^9.2.5",
     "@deck.gl/geo-layers": "^9.2.5",
@@ -30,14 +31,12 @@
     "@fontsource/rubik-mono-one": "^5.2.8",
     "@fontsource/source-code-pro": "^5.2.7",
     "@headlessui/react": "^2.2.9",
-    "@types/leaflet": "^1.9.21",
     "@types/three": "^0.182.0",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
     "d3-contour": "^4.0.2",
     "d3-geo": "^3.1.1",
     "h3-js": "^4.4.0",
-    "leaflet": "^1.9.4",
     "lucide-react": "^0.559.0",
     "maplibre-gl": "^5.15.0",
     "motion": "^12.29.0",
@@ -45,7 +44,6 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-is": "^19.2.3",
-    "react-leaflet": "^4.2.1",
     "react-map-gl": "^8.1.0",
     "react-router-dom": "^7.1.1",
     "recharts": "^3.5.1",

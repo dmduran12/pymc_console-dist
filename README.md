@@ -159,11 +159,11 @@ cd pymc_console
 sudo bash manage.sh install
 ```
 
-> **⚠️ Important: Branch Selection**
+> **Note: Branch Selection**
 >
-> During installation, you'll be asked to select a pyMC_Repeater branch. **Select `feat/dmg`** (the default/recommended option). This branch contains the login/authentication functionality required for the dashboard to work properly.
+> During installation, you'll be asked to select a pyMC_Repeater branch. **Select `dev`** (the default/recommended option). The `dev` branch contains the latest features and improvements.
 >
-> If you select `dev` or `main`, you may encounter "error 200" or login issues.
+
 
 The installer will:
 1. Install all system dependencies (Python, pip, etc.)
@@ -296,7 +296,7 @@ sudo journalctl -u pymc-repeater -f
 
 ### "Error 200" or Login Issues
 
-This typically means you installed with the wrong pyMC_Repeater branch. The login functionality is only available in the `feat/dmg` branch.
+This can occur with older installations or mismatched versions.
 
 **To fix:**
 ```bash
@@ -304,9 +304,7 @@ cd pymc_console
 sudo bash manage.sh upgrade
 ```
 
-Select **Full pyMC Stack** upgrade and choose the `feat/dmg` branch.
-
-> **Note:** When entering the branch name, use `feat/dmg` (not just `dmg`).
+Select **Full pyMC Stack** upgrade to update pyMC_Repeater and pyMC_core to the latest versions.
 
 ### Service won't start
 
