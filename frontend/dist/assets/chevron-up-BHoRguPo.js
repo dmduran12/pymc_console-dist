@@ -1,0 +1,1 @@
+import{c as a}from"./index-Cj2TQb_l.js";const t=a("activity",[["path",{d:"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",key:"169zse"}]]),e=a("chevron-up",[["path",{d:"m18 15-6-6-6 6",key:"153udz"}]]);export{t as A,e as C};
