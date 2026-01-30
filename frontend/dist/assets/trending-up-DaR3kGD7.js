@@ -1,1 +1,0 @@
-import{c as t}from"./index-Cj2TQb_l.js";const a=t("minus",[["path",{d:"M5 12h14",key:"1ays0h"}]]),d=t("trending-down",[["path",{d:"M16 17h6v-6",key:"t6n2it"}],["path",{d:"m22 17-8.5-8.5-5 5L2 7",key:"x473p"}]]),e=t("trending-up",[["path",{d:"M16 7h6v6",key:"box55l"}],["path",{d:"m22 7-8.5 8.5-5-5L2 17",key:"1t1m79"}]]);export{a as M,e as T,d as a};
