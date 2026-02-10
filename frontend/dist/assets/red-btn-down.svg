@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 57.22 56.95">
+  <defs>
+    <style>
+      .cls-2 {
+        fill: url(#linear-gradient-2);
+        opacity: .86;
+        stroke: rgba(138, 116, 80, .3);
+        stroke-width: .25px;
+        stroke-miterlimit: 10;
+        filter: url(#depth-down);
+      }
+      .cls-4 {
+        fill: url(#radial-gradient-2);
+        opacity: .56;
+        stroke: #c4a882;
+        stroke-width: .5px;
+        stroke-miterlimit: 10;
+      }
+      .cls-5 {
+        fill: #1f1f1f;
+      }
+    </style>
+    <!-- Pressed face: same base hue, just slightly muted -->
+    <linearGradient id="linear-gradient-2" x1="10.27" y1="45.31" x2="45.01" y2="13.85" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a89070"/>
+      <stop offset=".11" stop-color="#b49a7a"/>
+      <stop offset=".53" stop-color="#c4aa88"/>
+      <stop offset="1" stop-color="#b89e78"/>
+    </linearGradient>
+    <!-- Circle: recognizable color, slightly desaturated -->
+    <radialGradient id="radial-gradient-2" cx="29.38" cy="28.43" fx="3.54" fy="56.15" r="37.9" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c8b090"/>
+      <stop offset=".35" stop-color="#b49a7a"/>
+      <stop offset=".42" stop-color="#a89070"/>
+      <stop offset=".65" stop-color="#967e5e"/>
+      <stop offset=".79" stop-color="#887050"/>
+    </radialGradient>
+    <!-- No outward drop shadow — button is flush with well floor -->
+    <filter id="depth-down" x="0" y="0" width="100%" height="100%">
+      <feFlood flood-opacity="0" result="none"/>
+      <feMerge><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Well rim shadow overlay — heavy at top, fades by mid, light leak at very bottom -->
+    <linearGradient id="face-pressed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000" stop-opacity=".5"/>
+      <stop offset=".12" stop-color="#000" stop-opacity=".3"/>
+      <stop offset=".35" stop-color="#000" stop-opacity=".08"/>
+      <stop offset=".8" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".04"/>
+    </linearGradient>
+    <!-- Inset dish — pushed into surface -->
+    <filter id="dish-down" x="-5%" y="-5%" width="110%" height="115%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur"/>
+      <feOffset dx="0" dy="2.5" result="offset"/>
+      <feComposite in="offset" in2="SourceAlpha" operator="in" result="shadow"/>
+      <feFlood flood-color="#000" flood-opacity=".5" result="color"/>
+      <feComposite in="color" in2="shadow" operator="in" result="inset"/>
+      <feMerge>
+        <feMergeNode in="SourceGraphic"/>
+        <feMergeNode in="inset"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Face shifted down 1.5px to show well gap at top -->
+  <rect class="cls-2" x="4.41" y="5.5" width="48.39" height="47.89" rx="7.04" ry="7.04"/>
+  <!-- Well rim shadow overlay -->
+  <rect x="4.41" y="5.5" width="48.39" height="47.89" rx="7.04" ry="7.04" fill="url(#face-pressed)"/>
+  <!-- Circle with inset dish -->
+  <rect class="cls-4" x="8.76" y="9.85" width="39.7" height="39.7" rx="19.71" ry="19.71" filter="url(#dish-down)"/>
+</svg>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 57.22 56.95">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: url(#radial-gradient);
+      }
+      .cls-1, .cls-3 {
+        stroke-miterlimit: 10;
+      }
+      .cls-1 {
+        stroke: #c4a882;
+        stroke-width: .5px;
+      }
+      .cls-3 {
+        fill: url(#linear-gradient);
+        stroke: rgba(138, 116, 80, .3);
+        stroke-width: .25px;
+        filter: url(#depth);
+      }
+      .cls-5 {
+        fill: #1f1f1f;
+      }
+    </style>
+    <linearGradient id="linear-gradient" x1="9.45" y1="46.05" x2="45.74" y2="13.19" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b89b74"/>
+      <stop offset=".11" stop-color="#c4a882"/>
+      <stop offset=".53" stop-color="#d4bc9a"/>
+      <stop offset="1" stop-color="#c8ab88"/>
+    </linearGradient>
+    <radialGradient id="radial-gradient" cx="29.42" cy="28.42" fx="2.92" fy="55.7" r="38.03" gradientUnits="userSpaceOnUse">
+      <stop offset=".24" stop-color="#d9c4a0"/>
+      <stop offset=".48" stop-color="#c4a882"/>
+      <stop offset=".53" stop-color="#b89b74"/>
+      <stop offset=".69" stop-color="#a08660"/>
+      <stop offset=".79" stop-color="#8a7450"/>
+    </radialGradient>
+    <filter id="depth" x="-4%" y="-4%" width="108%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+    <!-- Top highlight on raised face -->
+    <linearGradient id="face-highlight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".3"/>
+      <stop offset=".15" stop-color="#fff" stop-opacity=".08"/>
+      <stop offset=".5" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".2"/>
+    </linearGradient>
+    <!-- Inset shadow for circle dish -->
+    <filter id="dish" x="-5%" y="-5%" width="110%" height="115%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
+      <feOffset dx="0" dy="1.5" result="offset"/>
+      <feComposite in="offset" in2="SourceAlpha" operator="in" result="shadow"/>
+      <feFlood flood-color="#000" flood-opacity=".35" result="color"/>
+      <feComposite in="color" in2="shadow" operator="in" result="inset"/>
+      <feMerge>
+        <feMergeNode in="SourceGraphic"/>
+        <feMergeNode in="inset"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect class="cls-3" x="3.42" y="3.52" width="50.37" height="50.37" rx="7.04" ry="7.04"/>
+  <!-- Highlight overlay on face -->
+  <rect x="3.42" y="3.52" width="50.37" height="50.37" rx="7.04" ry="7.04" fill="url(#face-highlight)"/>
+  <!-- Circle with inset dish effect -->
+  <rect class="cls-1" x="7.95" y="8.04" width="41.32" height="41.32" rx="20.66" ry="20.66" filter="url(#dish)"/>
+</svg>
