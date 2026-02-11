@@ -1,0 +1,1 @@
+import{c as a,cY as s}from"./index-CImKXCRQ.js";const c=a("compass",[["path",{d:"m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z",key:"9ktpf1"}],["circle",{cx:"12",cy:"12",r:"10",key:"1mglay"}]]),e=s(.65,0,.35,1),m=s(.33,1,.68,1),o=s(.33,.67,.67,1),p=s(.76,0,.24,1);export{c as C,m as a,e as b,o as c,p as e};
