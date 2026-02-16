@@ -1,2 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/latin-400-BcR6IdUc.css","assets/latin-500-DCnAHIrw.css","assets/latin-600-CnkPk-vb.css","assets/latin-700-UC1i-VSI.css"])))=>i.map(i=>d[i]);
-import{_}from"./vendor-react-j_fHog8x.js";let t=!1,a=null;async function i(){if(!t)return a||(a=(async()=>{try{await Promise.all([_(()=>Promise.resolve({}),__vite__mapDeps([0])),_(()=>Promise.resolve({}),__vite__mapDeps([1])),_(()=>Promise.resolve({}),__vite__mapDeps([2])),_(()=>Promise.resolve({}),__vite__mapDeps([3]))]),t=!0}catch(a){}})(),a)}export{i as l};
