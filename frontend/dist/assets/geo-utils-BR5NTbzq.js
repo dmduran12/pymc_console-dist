@@ -1,1 +1,0 @@
-const t={VERY_CLOSE:500,CLOSE:2e3,FAR:1e4};function a(t,a,h,n){const s=(h-t)*Math.PI/180,M=(n-a)*Math.PI/180,o=Math.sin(s/2)*Math.sin(s/2)+Math.cos(t*Math.PI/180)*Math.cos(h*Math.PI/180)*Math.sin(M/2)*Math.sin(M/2);return 2*Math.atan2(Math.sqrt(o),Math.sqrt(1-o))*6371e3}function h(t,a){return void 0!==t&&void 0!==a&&(0!==t||0!==a)}export{t as P,a as c,h};
