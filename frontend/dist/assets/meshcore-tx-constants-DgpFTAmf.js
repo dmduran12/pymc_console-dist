@@ -1,0 +1,1 @@
+const T=.2,o=.5,s=.2;function n(t,r=1){return Math.floor(r*5*t)}function a(t){const r=Math.round(t/.2)*.2;return Math.max(0,Math.min(5,r))}function R(t){const r=n(t);return`×${t.toFixed(1)} (${r} slot${r!==1?"s":""})`}function F(t){return t<=2?.4:t<=5?.6:t<=8?.8:t<=12?1:1.2}function O(t){return t<=5?0:t<=10?.2:.4}export{T as F,a,F as b,n as c,O as d,o as e,R as f,s as g};
