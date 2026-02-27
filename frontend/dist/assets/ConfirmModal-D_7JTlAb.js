@@ -1,0 +1,6 @@
+import{d as l,r as m,j as s,ac as x,dr as h,c as p,ad as f,dK as g,B as o}from"./index-CdwYueSG.js";import{T as j}from"./triangle-alert-DaComX7z.js";/**
+ * @license lucide-react v0.559.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const u=[["path",{d:"M10 11v6",key:"nco0om"}],["path",{d:"M14 11v6",key:"outv1u"}],["path",{d:"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",key:"miytrc"}],["path",{d:"M3 6h18",key:"d0wm0j"}],["path",{d:"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",key:"e791ji"}]],M=l("trash-2",u),y={danger:"text-sys-red",warning:"text-sys-indigo",default:"text-sys-blue"},C={danger:"danger",warning:"warning",default:"primary"};function N({isOpen:t,title:n="Confirm",message:r,confirmLabel:i="Confirm",cancelLabel:c="Cancel",variant:e="default",onConfirm:d,onCancel:a}){return s.jsxs(x,{open:t,onClose:a,size:"sm",children:[s.jsx(h,{icon:s.jsx(j,{className:p("w-5 h-5",y[e])}),title:n,onClose:a}),s.jsx(f,{children:s.jsx("p",{className:"text-sm text-fg-secondary",children:r})}),s.jsxs(g,{children:[s.jsx(o,{color:"muted",onClick:a,className:"flex-1",children:c}),s.jsx(o,{color:C[e],onClick:d,className:"flex-1",children:i})]})]})}const A=m.memo(N);export{A as C,M as T};
