@@ -399,13 +399,19 @@ do_upgrade() {
         branch=$(cd "$CLONE_DIR" && git rev-parse --abbrev-ref HEAD 2>/dev/null) || branch="$DEFAULT_BRANCH"
     fi
     
-    # Upgrade type selection
-    local upgrade_type
-    upgrade_type=$($DIALOG --backtitle "pyMC Console" --title "Upgrade" --menu \
-        "\nWhat would you like to upgrade?" 12 55 2 \
-        "console" "Console only" \
-        "full"    "Full Stack (Repeater + Console)" \
-        3>&1 1>&2 2>&3) || return 0
+    # Upgrade type selection (allow non-interactive via arg or env)
+    local upgrade_type="${1:-${UPGRADE_TYPE:-}}"
+    if [[ -z "$upgrade_type" ]]; then
+        upgrade_type=$($DIALOG --backtitle "pyMC Console" --title "Upgrade" --menu \
+            "\nWhat would you like to upgrade?" 12 55 2 \
+            "console" "Console only" \
+            "full"    "Full Stack (Repeater + Console)" \
+            3>&1 1>&2 2>&3) || return 0
+    fi
+    if [[ "$upgrade_type" != "console" && "$upgrade_type" != "full" ]]; then
+        show_error "Unknown upgrade type: $upgrade_type"
+        return 1
+    fi
     
     print_banner
     echo -e "  ${DIM}Mode: $([[ "$upgrade_type" == "full" ]] && echo "Full Stack" || echo "Console Only")${NC}"
@@ -622,7 +628,7 @@ Commands:
   install [full|console]  Fresh installation (default: interactive)
                           full    - pyMC_Repeater + Console dashboard
                           console - Dashboard only (existing Repeater)
-  upgrade                 Upgrade existing installation
+  upgrade [full|console]  Upgrade existing installation (non-interactive)
   uninstall               Remove everything
   start                   Start service
   stop                    Stop service  
@@ -638,7 +644,7 @@ EOF
 case "${1:-}" in
     -h|--help)  show_help ;;
     install)    setup_dialog; do_install "${2:-}" ;;
-    upgrade)    setup_dialog; do_upgrade ;;
+    upgrade)    setup_dialog; do_upgrade "${2:-}" ;;
     uninstall)  setup_dialog; do_uninstall ;;
     start)      do_start ;;
     stop)       do_stop ;;
