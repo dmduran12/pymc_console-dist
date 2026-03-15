@@ -1,0 +1,60 @@
+# Build Validation (Private Repo)
+#
+# This workflow validates that dist/ exists and is properly built.
+# The actual public release is handled by sync-to-public.yml which
+# builds from source and pushes to the public distribution repo.
+#
+# For local development with proprietary files:
+#   npm run build:static  (builds and packages dist/)
+
+name: Build Validation
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Verify dist exists
+        run: |
+          if [ ! -d "frontend/dist" ] || [ ! -f "frontend/dist/index.html" ]; then
+            echo "ERROR: frontend/dist/ not found or incomplete."
+            echo "Build locally with 'npm run build:static' before pushing."
+            exit 1
+          fi
+          echo "✓ Pre-built dist/ found"
+          ls -la frontend/dist/
+      
+      - name: Get version info
+        run: |
+          VERSION=$(node -p "require('./frontend/package.json').version")
+          echo "Version: $VERSION"
+          
+          if [ -f "frontend/dist/VERSION" ]; then
+            DIST_VERSION=$(cat frontend/dist/VERSION)
+            echo "Dist version: $DIST_VERSION"
+            if [ "$VERSION" != "$DIST_VERSION" ]; then
+              echo "⚠️  Warning: package.json version ($VERSION) differs from dist VERSION ($DIST_VERSION)"
+              echo "Consider rebuilding with 'npm run build:static'"
+            fi
+          fi
+      
+      - name: Upload build artifacts (for inspection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pymc-ui-${{ github.ref_name }}
+          path: frontend/dist/
+          retention-days: 7
