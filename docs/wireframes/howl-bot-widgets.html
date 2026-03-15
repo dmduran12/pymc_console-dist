@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HOWL Bot Widget Wireframes — pymc_console</title>
+<style>
+  :root {
+    /* Zinc scale */
+    --zinc-50: #fafafa;
+    --zinc-100: #f4f4f5;
+    --zinc-200: #e4e4e7;
+    --zinc-300: #d4d4d8;
+    --zinc-400: #a1a1aa;
+    --zinc-500: #71717a;
+    --zinc-600: #52525b;
+    --zinc-700: #3f3f46;
+    --zinc-800: #27272a;
+    --zinc-900: #18181b;
+    --zinc-950: #09090b;
+    /* System chromatic */
+    --sys-blue: #3B82F6;
+    --sys-green: #22C55E;
+    --sys-amber: #F59E0B;
+    --sys-red: #EF4444;
+    --sys-indigo: #5B5BD6;
+    --sys-cyan: #06B6D4;
+    --sys-orange: #F97316;
+    --sys-pink: #EC4899;
+    --sys-violet: #8B5CF6;
+    --sys-teal: #14B8A6;
+    --sys-lime: #84CC16;
+    --sys-yellow: #EAB308;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+    background: var(--zinc-950);
+    color: var(--zinc-100);
+    padding: 40px 24px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+  h1 span { color: var(--sys-blue); }
+  .subtitle { color: var(--zinc-500); font-size: 14px; margin-bottom: 48px; }
+  h2 {
+    font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--zinc-500); margin-bottom: 24px; padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .tier { margin-bottom: 56px; }
+  .widget-row {
+    display: grid; grid-template-columns: 200px 1fr; gap: 24px;
+    align-items: start; margin-bottom: 40px;
+  }
+  .widget-meta h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .widget-meta p { font-size: 12px; color: var(--zinc-500); line-height: 1.5; }
+  .widget-meta code {
+    font-size: 11px; background: rgba(255,255,255,0.06); padding: 1px 5px;
+    border-radius: 4px; color: var(--sys-cyan);
+  }
+  .chat-context {
+    background: var(--zinc-900);
+    border-radius: 16px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  /* Avatar row above each widget */
+  .avatar-row {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+  }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--sys-indigo), var(--sys-blue));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: white; flex-shrink: 0;
+  }
+  .sender-info { display: flex; flex-direction: column; }
+  .sender-name { font-size: 13px; color: var(--zinc-400); }
+  .bot-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 10px; color: var(--sys-indigo); background: rgba(91,91,214,0.1);
+    padding: 1px 6px; border-radius: 99px; margin-left: 6px;
+  }
+  svg.widget { display: block; max-width: 100%; height: auto; }
+  @media (max-width: 640px) {
+    .widget-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🤖 <span>HOWL</span> Bot Widget Wireframes</h1>
+<p class="subtitle">First-draft SVG sketches for inline companion chat widgets — pymc_console</p>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- TIER 1 — RICH VISUAL WIDGETS -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+<div class="tier">
+<h2>Tier 1 — Rich Visual Widgets</h2>
+
+<!-- ── WeatherWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>WeatherWidget</h3>
+  <p>iOS-style weather card with condition gradient, large temp, detail pills, hi/lo bar, tomorrow preview.</p>
+  <p><code>wx</code> <code>gwx</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <div class="sender-info">
+      <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+    </div>
+  </div>
+  <svg class="widget" viewBox="0 0 320 220" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="sky-clear" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#1e3a5f"/>
+        <stop offset="100%" stop-color="#3B82F6"/>
+      </linearGradient>
+      <filter id="glass1">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1"/>
+      </filter>
+      <clipPath id="card-clip"><rect width="320" height="220" rx="14"/></clipPath>
+    </defs>
+    <!-- Card bg -->
+    <rect width="320" height="220" rx="14" fill="url(#sky-clear)" opacity="0.85"/>
+    <rect width="320" height="220" rx="14" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+    <!-- Bot indicator -->
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Location -->
+    <text x="16" y="28" font-size="11" fill="rgba(255,255,255,0.6)" font-weight="500">Portland, OR</text>
+    <!-- Current condition -->
+    <text x="16" y="62" font-size="36" fill="white">☀️</text>
+    <text x="60" y="60" font-size="42" fill="white" font-weight="300">75°</text>
+    <text x="60" y="78" font-size="12" fill="rgba(255,255,255,0.7)">Sunny</text>
+    <!-- Detail pills row -->
+    <g transform="translate(16, 96)">
+      <rect width="68" height="26" rx="8" fill="rgba(255,255,255,0.1)"/>
+      <text x="10" y="17" font-size="10" fill="rgba(255,255,255,0.8)">💨 NW 10</text>
+      <rect x="74" width="62" height="26" rx="8" fill="rgba(255,255,255,0.1)"/>
+      <text x="84" y="17" font-size="10" fill="rgba(255,255,255,0.8)">💧 45%</text>
+      <rect x="142" width="72" height="26" rx="8" fill="rgba(255,255,255,0.1)"/>
+      <text x="152" y="17" font-size="10" fill="rgba(255,255,255,0.8)">👁️ 10mi</text>
+      <rect x="220" width="80" height="26" rx="8" fill="rgba(255,255,255,0.1)"/>
+      <text x="230" y="17" font-size="10" fill="rgba(255,255,255,0.8)">📊 30.12</text>
+    </g>
+    <!-- Hi/Lo bar -->
+    <g transform="translate(16, 136)">
+      <rect width="288" height="1" fill="rgba(255,255,255,0.1)"/>
+      <text x="0" y="22" font-size="12" fill="rgba(255,255,255,0.5)">L 55°</text>
+      <!-- Gradient bar -->
+      <rect x="50" y="12" width="180" height="6" rx="3" fill="rgba(255,255,255,0.15)"/>
+      <rect x="50" y="12" width="130" height="6" rx="3" fill="rgba(255,255,255,0.35)"/>
+      <circle cx="180" cy="15" r="4" fill="white"/>
+      <text x="242" y="22" font-size="12" fill="rgba(255,255,255,0.8)" text-anchor="end">H 78°</text>
+    </g>
+    <!-- Tomorrow preview -->
+    <g transform="translate(16, 172)">
+      <rect width="288" height="1" fill="rgba(255,255,255,0.1)"/>
+      <text x="0" y="20" font-size="11" fill="rgba(255,255,255,0.4)">Tomorrow</text>
+      <text x="80" y="20" font-size="14">☁️</text>
+      <text x="100" y="20" font-size="11" fill="rgba(255,255,255,0.7)">Cloudy 70° / 58°</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── WeatherMultidayWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>WeatherMultidayWidget</h3>
+  <p>Horizontal scrollable day forecast cards. Each day: abbreviation, emoji, hi/lo temps.</p>
+  <p><code>wx 3</code> <code>gwx 5</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="120" rx="14" fill="#1e293b" opacity="0.85"/>
+    <rect width="320" height="120" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Day cards -->
+    <g transform="translate(12, 12)">
+      <!-- Mon -->
+      <rect x="0" y="0" width="56" height="96" rx="10" fill="rgba(255,255,255,0.06)"/>
+      <text x="28" y="20" font-size="11" fill="rgba(255,255,255,0.5)" text-anchor="middle" font-weight="600">Mon</text>
+      <text x="28" y="48" font-size="22" text-anchor="middle">☀️</text>
+      <text x="28" y="68" font-size="12" fill="white" text-anchor="middle" font-weight="500">75°</text>
+      <text x="28" y="84" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="middle">55°</text>
+      <!-- Tue -->
+      <rect x="62" y="0" width="56" height="96" rx="10" fill="rgba(255,255,255,0.06)"/>
+      <text x="90" y="20" font-size="11" fill="rgba(255,255,255,0.5)" text-anchor="middle" font-weight="600">Tue</text>
+      <text x="90" y="48" font-size="22" text-anchor="middle">⛅</text>
+      <text x="90" y="68" font-size="12" fill="white" text-anchor="middle" font-weight="500">68°</text>
+      <text x="90" y="84" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="middle">52°</text>
+      <!-- Wed -->
+      <rect x="124" y="0" width="56" height="96" rx="10" fill="rgba(255,255,255,0.06)"/>
+      <text x="152" y="20" font-size="11" fill="rgba(255,255,255,0.5)" text-anchor="middle" font-weight="600">Wed</text>
+      <text x="152" y="48" font-size="22" text-anchor="middle">🌧️</text>
+      <text x="152" y="68" font-size="12" fill="white" text-anchor="middle" font-weight="500">62°</text>
+      <text x="152" y="84" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="middle">48°</text>
+      <!-- Thu -->
+      <rect x="186" y="0" width="56" height="96" rx="10" fill="rgba(255,255,255,0.06)"/>
+      <text x="214" y="20" font-size="11" fill="rgba(255,255,255,0.5)" text-anchor="middle" font-weight="600">Thu</text>
+      <text x="214" y="48" font-size="22" text-anchor="middle">☁️</text>
+      <text x="214" y="68" font-size="12" fill="white" text-anchor="middle" font-weight="500">65°</text>
+      <text x="214" y="84" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="middle">50°</text>
+      <!-- Fri -->
+      <rect x="248" y="0" width="56" height="96" rx="10" fill="rgba(255,255,255,0.06)"/>
+      <text x="276" y="20" font-size="11" fill="rgba(255,255,255,0.5)" text-anchor="middle" font-weight="600">Fri</text>
+      <text x="276" y="48" font-size="22" text-anchor="middle">☀️</text>
+      <text x="276" y="68" font-size="12" fill="white" text-anchor="middle" font-weight="500">72°</text>
+      <text x="276" y="84" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="middle">54°</text>
+    </g>
+    <!-- Scroll hint gradient -->
+    <rect x="290" y="0" width="30" height="120" rx="0" fill="url(#fade-r)" opacity="0.5"/>
+    <defs><linearGradient id="fade-r"><stop offset="0%" stop-color="transparent"/><stop offset="100%" stop-color="#1e293b"/></linearGradient></defs>
+  </svg>
+</div>
+</div>
+
+<!-- ── WeatherHourlyWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>WeatherHourlyWidget</h3>
+  <p>Horizontal hour pills: time, emoji, temp, precip%. Optional signal score overlay.</p>
+  <p><code>wx hourly</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 90" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="90" rx="14" fill="#1e293b" opacity="0.85"/>
+    <rect width="320" height="90" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Hour pills -->
+    <g transform="translate(12, 14)">
+      <!-- 10AM -->
+      <g>
+        <text x="16" y="10" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">10AM</text>
+        <text x="16" y="32" font-size="16" text-anchor="middle">🌦️</text>
+        <text x="16" y="48" font-size="12" fill="white" text-anchor="middle" font-weight="500">49°</text>
+        <text x="16" y="62" font-size="9" fill="#3B82F6" text-anchor="middle">26%</text>
+      </g>
+      <!-- 11AM -->
+      <g transform="translate(48, 0)">
+        <text x="16" y="10" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">11AM</text>
+        <text x="16" y="32" font-size="16" text-anchor="middle">☁️</text>
+        <text x="16" y="48" font-size="12" fill="white" text-anchor="middle" font-weight="500">51°</text>
+        <text x="16" y="62" font-size="9" fill="rgba(255,255,255,0.3)" text-anchor="middle">12%</text>
+      </g>
+      <!-- 12PM -->
+      <g transform="translate(96, 0)">
+        <text x="16" y="10" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">12PM</text>
+        <text x="16" y="32" font-size="16" text-anchor="middle">⛅</text>
+        <text x="16" y="48" font-size="12" fill="white" text-anchor="middle" font-weight="500">54°</text>
+        <text x="16" y="62" font-size="9" fill="rgba(255,255,255,0.3)" text-anchor="middle">5%</text>
+      </g>
+      <!-- 1PM -->
+      <g transform="translate(144, 0)">
+        <text x="16" y="10" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">1PM</text>
+        <text x="16" y="32" font-size="16" text-anchor="middle">☀️</text>
+        <text x="16" y="48" font-size="12" fill="white" text-anchor="middle" font-weight="500">57°</text>
+        <text x="16" y="62" font-size="9" fill="rgba(255,255,255,0.3)" text-anchor="middle">—</text>
+      </g>
+      <!-- 2PM -->
+      <g transform="translate(192, 0)">
+        <text x="16" y="10" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">2PM</text>
+        <text x="16" y="32" font-size="16" text-anchor="middle">☀️</text>
+        <text x="16" y="48" font-size="12" fill="white" text-anchor="middle" font-weight="500">59°</text>
+        <text x="16" y="62" font-size="9" fill="rgba(255,255,255,0.3)" text-anchor="middle">—</text>
+      </g>
+      <!-- 3PM -->
+      <g transform="translate(240, 0)">
+        <text x="16" y="10" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">3PM</text>
+        <text x="16" y="32" font-size="16" text-anchor="middle">☀️</text>
+        <text x="16" y="48" font-size="12" fill="white" text-anchor="middle" font-weight="500">58°</text>
+        <text x="16" y="62" font-size="9" fill="rgba(255,255,255,0.3)" text-anchor="middle">—</text>
+      </g>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── AqiWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>AqiWidget</h3>
+  <p>Arc gauge with AQI value + EPA color. Category label. Pollutant breakdown pills below.</p>
+  <p><code>aqi</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="aqi-arc" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#22C55E"/>
+        <stop offset="33%" stop-color="#EAB308"/>
+        <stop offset="66%" stop-color="#F97316"/>
+        <stop offset="100%" stop-color="#EF4444"/>
+      </linearGradient>
+    </defs>
+    <rect width="320" height="200" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="200" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <text x="16" y="24" font-size="11" fill="rgba(255,255,255,0.5)" font-weight="500">Portland, OR</text>
+    <!-- Arc gauge -->
+    <g transform="translate(160, 110)">
+      <!-- Background arc -->
+      <path d="M -80 0 A 80 80 0 0 1 80 0" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10" stroke-linecap="round"/>
+      <!-- Filled arc (42/500 = ~15% of semicircle) -->
+      <path d="M -80 0 A 80 80 0 0 1 -68 -42" fill="none" stroke="#22C55E" stroke-width="10" stroke-linecap="round"/>
+      <!-- Needle dot -->
+      <circle cx="-68" cy="-42" r="5" fill="#22C55E"/>
+      <!-- Center value -->
+      <text x="0" y="-20" font-size="36" fill="white" text-anchor="middle" font-weight="700">42</text>
+      <text x="0" y="0" font-size="13" fill="#22C55E" text-anchor="middle" font-weight="600">Good</text>
+    </g>
+    <!-- Pollutant pills -->
+    <g transform="translate(12, 140)">
+      <rect x="0" width="56" height="22" rx="6" fill="rgba(255,255,255,0.06)"/>
+      <text x="28" y="15" font-size="9" fill="rgba(255,255,255,0.6)" text-anchor="middle">PM2.5: 10</text>
+      <rect x="62" width="52" height="22" rx="6" fill="rgba(255,255,255,0.06)"/>
+      <text x="88" y="15" font-size="9" fill="rgba(255,255,255,0.6)" text-anchor="middle">PM10: 15</text>
+      <rect x="120" width="46" height="22" rx="6" fill="rgba(255,255,255,0.06)"/>
+      <text x="143" y="15" font-size="9" fill="rgba(255,255,255,0.6)" text-anchor="middle">O₃: 28</text>
+      <rect x="172" width="50" height="22" rx="6" fill="rgba(255,255,255,0.06)"/>
+      <text x="197" y="15" font-size="9" fill="rgba(255,255,255,0.6)" text-anchor="middle">NO₂: 5</text>
+      <rect x="228" width="54" height="22" rx="6" fill="rgba(255,255,255,0.06)"/>
+      <text x="255" y="15" font-size="9" fill="rgba(255,255,255,0.6)" text-anchor="middle">CO: 200</text>
+    </g>
+    <!-- Scale labels -->
+    <g transform="translate(12, 172)">
+      <circle cx="6" cy="8" r="4" fill="#22C55E"/><text x="14" y="12" font-size="8" fill="rgba(255,255,255,0.35)">Good</text>
+      <circle cx="56" cy="8" r="4" fill="#EAB308"/><text x="64" y="12" font-size="8" fill="rgba(255,255,255,0.35)">Mod</text>
+      <circle cx="100" cy="8" r="4" fill="#F97316"/><text x="108" y="12" font-size="8" fill="rgba(255,255,255,0.35)">USG</text>
+      <circle cx="140" cy="8" r="4" fill="#EF4444"/><text x="148" y="12" font-size="8" fill="rgba(255,255,255,0.35)">Unhl</text>
+      <circle cx="184" cy="8" r="4" fill="#8B5CF6"/><text x="192" y="12" font-size="8" fill="rgba(255,255,255,0.35)">VUnhl</text>
+      <circle cx="232" cy="8" r="4" fill="#7C2D12"/><text x="240" y="12" font-size="8" fill="rgba(255,255,255,0.35)">Haz</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── SolarWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>SolarWidget</h3>
+  <p>Key-value grid for solar indices. K-Index gets color coding (green→red).</p>
+  <p><code>solar</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="160" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="160" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Header -->
+    <text x="16" y="26" font-size="12" fill="rgba(255,255,255,0.5)" font-weight="600">☀️ Solar Conditions</text>
+    <!-- 3x2 grid -->
+    <g transform="translate(16, 40)">
+      <!-- Row 1 -->
+      <rect x="0" y="0" width="90" height="48" rx="8" fill="rgba(255,255,255,0.04)"/>
+      <text x="8" y="18" font-size="9" fill="rgba(255,255,255,0.4)">A-Index</text>
+      <text x="8" y="36" font-size="18" fill="white" font-weight="600">5</text>
+      
+      <rect x="98" y="0" width="90" height="48" rx="8" fill="rgba(34,197,94,0.08)"/>
+      <text x="106" y="18" font-size="9" fill="rgba(255,255,255,0.4)">K-Index</text>
+      <text x="106" y="36" font-size="18" fill="#22C55E" font-weight="600">2</text>
+      <rect x="130" y="22" width="48" height="6" rx="3" fill="rgba(255,255,255,0.08)"/>
+      <rect x="130" y="22" width="14" height="6" rx="3" fill="#22C55E"/>
+      
+      <rect x="196" y="0" width="108" height="48" rx="8" fill="rgba(255,255,255,0.04)"/>
+      <text x="204" y="18" font-size="9" fill="rgba(255,255,255,0.4)">Sunspots</text>
+      <text x="204" y="36" font-size="18" fill="white" font-weight="600">120</text>
+      <!-- Row 2 -->
+      <rect x="0" y="56" width="90" height="48" rx="8" fill="rgba(255,255,255,0.04)"/>
+      <text x="8" y="74" font-size="9" fill="rgba(255,255,255,0.4)">X-Ray Flux</text>
+      <text x="8" y="92" font-size="16" fill="white" font-weight="500">C1.5</text>
+      
+      <rect x="98" y="56" width="90" height="48" rx="8" fill="rgba(255,255,255,0.04)"/>
+      <text x="106" y="74" font-size="9" fill="rgba(255,255,255,0.4)">Solar Flux</text>
+      <text x="106" y="92" font-size="18" fill="white" font-weight="600">150</text>
+      
+      <rect x="196" y="56" width="108" height="48" rx="8" fill="rgba(255,255,255,0.04)"/>
+      <text x="204" y="74" font-size="9" fill="rgba(255,255,255,0.4)">Signal Noise</text>
+      <text x="204" y="92" font-size="18" fill="white" font-weight="600">S3</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── HfCondWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>HfCondWidget</h3>
+  <p>Two-column day/night HF band conditions. Each band as a colored status pill.</p>
+  <p><code>hfcond</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="160" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="160" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <text x="16" y="26" font-size="12" fill="rgba(255,255,255,0.5)" font-weight="600">📡 HF Band Conditions</text>
+    <!-- Day column -->
+    <g transform="translate(16, 40)">
+      <text x="0" y="12" font-size="10" fill="#F59E0B" font-weight="600">☀️ DAY</text>
+      <rect x="0" y="20" width="136" height="28" rx="7" fill="rgba(255,255,255,0.04)"/>
+      <text x="10" y="39" font-size="11" fill="rgba(255,255,255,0.6)">80m–40m</text>
+      <rect x="86" y="26" width="42" height="16" rx="4" fill="rgba(34,197,94,0.15)"/>
+      <text x="107" y="38" font-size="9" fill="#22C55E" text-anchor="middle" font-weight="600">Good</text>
+      
+      <rect x="0" y="54" width="136" height="28" rx="7" fill="rgba(255,255,255,0.04)"/>
+      <text x="10" y="73" font-size="11" fill="rgba(255,255,255,0.6)">30m–20m</text>
+      <rect x="86" y="60" width="42" height="16" rx="4" fill="rgba(34,197,94,0.15)"/>
+      <text x="107" y="72" font-size="9" fill="#22C55E" text-anchor="middle" font-weight="600">Good</text>
+      
+      <rect x="0" y="88" width="136" height="28" rx="7" fill="rgba(255,255,255,0.04)"/>
+      <text x="10" y="107" font-size="11" fill="rgba(255,255,255,0.6)">17m–15m</text>
+      <rect x="86" y="94" width="42" height="16" rx="4" fill="rgba(245,158,11,0.15)"/>
+      <text x="107" y="106" font-size="9" fill="#F59E0B" text-anchor="middle" font-weight="600">Fair</text>
+    </g>
+    <!-- Night column -->
+    <g transform="translate(168, 40)">
+      <text x="0" y="12" font-size="10" fill="#5B5BD6" font-weight="600">🌙 NIGHT</text>
+      <rect x="0" y="20" width="136" height="28" rx="7" fill="rgba(255,255,255,0.04)"/>
+      <text x="10" y="39" font-size="11" fill="rgba(255,255,255,0.6)">80m–40m</text>
+      <rect x="86" y="26" width="42" height="16" rx="4" fill="rgba(239,68,68,0.15)"/>
+      <text x="107" y="38" font-size="9" fill="#EF4444" text-anchor="middle" font-weight="600">Poor</text>
+      
+      <rect x="0" y="54" width="136" height="28" rx="7" fill="rgba(255,255,255,0.04)"/>
+      <text x="10" y="73" font-size="11" fill="rgba(255,255,255,0.6)">30m–20m</text>
+      <rect x="86" y="60" width="42" height="16" rx="4" fill="rgba(239,68,68,0.15)"/>
+      <text x="107" y="72" font-size="9" fill="#EF4444" text-anchor="middle" font-weight="600">Poor</text>
+      
+      <rect x="0" y="88" width="136" height="28" rx="7" fill="rgba(255,255,255,0.04)"/>
+      <text x="10" y="107" font-size="11" fill="rgba(255,255,255,0.6)">17m–15m</text>
+      <rect x="86" y="94" width="42" height="16" rx="4" fill="rgba(239,68,68,0.15)"/>
+      <text x="107" y="106" font-size="9" fill="#EF4444" text-anchor="middle" font-weight="600">Poor</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── SunWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>SunWidget</h3>
+  <p>Sun arc SVG showing current position along the rise→set trajectory. Daylight + remaining readout.</p>
+  <p><code>sun</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="sun-sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1e3a5f"/>
+        <stop offset="100%" stop-color="#18181b"/>
+      </linearGradient>
+    </defs>
+    <rect width="320" height="180" rx="14" fill="url(#sun-sky)" opacity="0.9"/>
+    <rect width="320" height="180" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Sun arc -->
+    <g transform="translate(160, 120)">
+      <!-- Horizon line -->
+      <line x1="-130" y1="0" x2="130" y2="0" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 4"/>
+      <!-- Arc (dotted for future, solid for past) -->
+      <path d="M -120 0 A 120 100 0 0 1 120 0" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+      <path d="M -120 0 A 120 100 0 0 1 40 -92" fill="none" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Sun position -->
+      <circle cx="40" cy="-92" r="10" fill="#F59E0B" opacity="0.2"/>
+      <circle cx="40" cy="-92" r="6" fill="#F59E0B"/>
+      <text x="40" y="-88" font-size="8" fill="#18181b" text-anchor="middle" font-weight="700">☀️</text>
+      <!-- Rise/Set labels -->
+      <text x="-120" y="16" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">🌅 6:42a</text>
+      <text x="120" y="16" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">🌇 7:15p</text>
+    </g>
+    <!-- Info row -->
+    <g transform="translate(16, 150)">
+      <rect x="0" y="0" width="92" height="22" rx="6" fill="rgba(255,255,255,0.06)"/>
+      <text x="46" y="15" font-size="9" fill="rgba(255,255,255,0.6)" text-anchor="middle">☀️ 12h 33m</text>
+      <rect x="100" y="0" width="92" height="22" rx="6" fill="rgba(245,158,11,0.1)"/>
+      <text x="146" y="15" font-size="9" fill="#F59E0B" text-anchor="middle">⏳ 5h 22m left</text>
+      <rect x="200" y="0" width="104" height="22" rx="6" fill="rgba(255,255,255,0.06)"/>
+      <text x="252" y="15" font-size="9" fill="rgba(255,255,255,0.5)" text-anchor="middle">Az 245° Alt 35°</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── MoonWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>MoonWidget</h3>
+  <p>Large moon phase emoji + illumination ring. Rise/set, next full/new moon dates.</p>
+  <p><code>moon</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="moon-bg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0f172a"/>
+        <stop offset="100%" stop-color="#18181b"/>
+      </linearGradient>
+    </defs>
+    <rect width="320" height="160" rx="14" fill="url(#moon-bg)" opacity="0.95"/>
+    <rect width="320" height="160" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Moon phase circle -->
+    <g transform="translate(60, 80)">
+      <!-- Illumination ring -->
+      <circle cx="0" cy="0" r="38" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+      <circle cx="0" cy="0" r="38" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="4" stroke-dasharray="163 75" transform="rotate(-90)"/>
+      <!-- Moon emoji -->
+      <text x="0" y="8" font-size="40" text-anchor="middle">🌖</text>
+      <!-- Percentage -->
+      <text x="0" y="54" font-size="12" fill="rgba(255,255,255,0.5)" text-anchor="middle" font-weight="600">68%</text>
+    </g>
+    <!-- Info column -->
+    <g transform="translate(120, 24)">
+      <text x="0" y="0" font-size="14" fill="white" font-weight="600">Waning Gibbous</text>
+      <!-- Rise/Set -->
+      <text x="0" y="26" font-size="10" fill="rgba(255,255,255,0.4)">Rise</text>
+      <text x="36" y="26" font-size="11" fill="rgba(255,255,255,0.7)">Mon 6:47 PM</text>
+      <text x="0" y="44" font-size="10" fill="rgba(255,255,255,0.4)">Set</text>
+      <text x="36" y="44" font-size="11" fill="rgba(255,255,255,0.7)">Tue 3:43 AM</text>
+      <!-- Divider -->
+      <line x1="0" y1="54" x2="180" y2="54" stroke="rgba(255,255,255,0.06)"/>
+      <!-- Next events -->
+      <text x="0" y="72" font-size="10" fill="rgba(255,255,255,0.4)">🌕 Full</text>
+      <text x="52" y="72" font-size="10" fill="rgba(255,255,255,0.6)">Mon Sep 7 9:15p</text>
+      <text x="0" y="90" font-size="10" fill="rgba(255,255,255,0.4)">🌑 New</text>
+      <text x="52" y="90" font-size="10" fill="rgba(255,255,255,0.6)">Sun Sep 21 3:30a</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── SatPassWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>SatPassWidget</h3>
+  <p>Satellite pass arc with compass directions. Rise→peak→set timeline. Max elevation callout.</p>
+  <p><code>satpass</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 170" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="170" rx="14" fill="#0f172a" opacity="0.95"/>
+    <rect width="320" height="170" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Sat name header -->
+    <text x="16" y="26" font-size="13" fill="white" font-weight="600">🛰️ ISS</text>
+    <text x="60" y="26" font-size="10" fill="rgba(255,255,255,0.4)">Mon 15 · 12m 15s pass</text>
+    <!-- Sky dome arc -->
+    <g transform="translate(160, 110)">
+      <!-- Horizon -->
+      <line x1="-120" y1="0" x2="120" y2="0" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+      <!-- Elevation rings -->
+      <ellipse cx="0" cy="0" rx="120" ry="50" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+      <ellipse cx="0" cy="0" rx="80" ry="33" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+      <ellipse cx="0" cy="0" rx="40" ry="17" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+      <!-- Pass arc -->
+      <path d="M -100 -10 Q -30 -60 0 -44 Q 30 -28 100 -10" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="4 2"/>
+      <!-- Peak -->
+      <circle cx="0" cy="-44" r="4" fill="#F59E0B"/>
+      <text x="0" y="-52" font-size="9" fill="#F59E0B" text-anchor="middle" font-weight="600">75°</text>
+      <!-- Compass labels -->
+      <text x="-120" y="14" font-size="9" fill="rgba(255,255,255,0.3)" text-anchor="middle">NW</text>
+      <text x="0" y="-72" font-size="9" fill="rgba(255,255,255,0.3)" text-anchor="middle">N</text>
+      <text x="120" y="14" font-size="9" fill="rgba(255,255,255,0.3)" text-anchor="middle">SE</text>
+      <!-- Start/end dots -->
+      <circle cx="-100" cy="-10" r="3" fill="#22C55E"/>
+      <circle cx="100" cy="-10" r="3" fill="#EF4444"/>
+    </g>
+    <!-- Timeline bar -->
+    <g transform="translate(16, 146)">
+      <text x="0" y="12" font-size="9" fill="#22C55E">6:42 PM</text>
+      <rect x="56" y="6" width="192" height="4" rx="2" fill="rgba(255,255,255,0.08)"/>
+      <rect x="56" y="6" width="120" height="4" rx="2" fill="rgba(245,158,11,0.4)"/>
+      <text x="256" y="12" font-size="9" fill="#EF4444">6:54 PM</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── AuroraWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>AuroraWidget</h3>
+  <p>KP index with color scale gauge. Probability bar + location. Aurora-themed gradient.</p>
+  <p><code>aurora</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 130" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="aurora-bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#0f172a"/>
+        <stop offset="50%" stop-color="#1a0f2e"/>
+        <stop offset="100%" stop-color="#18181b"/>
+      </linearGradient>
+    </defs>
+    <rect width="320" height="130" rx="14" fill="url(#aurora-bg)" opacity="0.95"/>
+    <rect width="320" height="130" rx="14" fill="none" stroke="rgba(139,92,246,0.15)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Header -->
+    <text x="16" y="26" font-size="12" fill="rgba(255,255,255,0.5)" font-weight="500">🌌 Aurora Forecast · Seattle</text>
+    <text x="272" y="26" font-size="9" fill="rgba(255,255,255,0.3)">Mar 15 2PM</text>
+    <!-- KP display -->
+    <g transform="translate(16, 40)">
+      <text x="0" y="30" font-size="32" fill="white" font-weight="700">3.2</text>
+      <text x="58" y="16" font-size="10" fill="rgba(255,255,255,0.4)">KP Index</text>
+      <rect x="58" y="22" width="100" height="14" rx="3" fill="rgba(255,255,255,0.06)"/>
+      <text x="108" y="32" font-size="10" fill="#22C55E" text-anchor="middle" font-weight="600">Quiet</text>
+    </g>
+    <!-- KP scale bar -->
+    <g transform="translate(16, 82)">
+      <rect x="0" y="0" width="288" height="6" rx="3" fill="rgba(255,255,255,0.06)"/>
+      <rect x="0" y="0" width="36" height="6" rx="3" fill="#22C55E" opacity="0.6"/><!-- 3.2/9 -->
+      <circle cx="102" cy="3" r="4" fill="white" stroke="#22C55E" stroke-width="1.5"/>
+      <!-- Scale ticks -->
+      <text x="0" y="18" font-size="7" fill="rgba(255,255,255,0.25)">0</text>
+      <text x="96" y="18" font-size="7" fill="rgba(255,255,255,0.25)">3</text>
+      <text x="160" y="18" font-size="7" fill="rgba(255,255,255,0.25)">5</text>
+      <text x="224" y="18" font-size="7" fill="rgba(255,255,255,0.25)">7</text>
+      <text x="280" y="18" font-size="7" fill="rgba(255,255,255,0.25)">9</text>
+    </g>
+    <!-- Probability -->
+    <g transform="translate(200, 40)">
+      <text x="0" y="16" font-size="10" fill="rgba(255,255,255,0.4)">Probability</text>
+      <text x="0" y="40" font-size="24" fill="#8B5CF6" font-weight="700">18%</text>
+      <!-- Bar graph -->
+      <rect x="62" y="4" width="6" height="36" rx="2" fill="rgba(255,255,255,0.06)"/>
+      <rect x="62" y="34" width="6" height="6" rx="2" fill="rgba(139,92,246,0.4)"/>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── PathWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>PathWidget</h3>
+  <p>Reuses existing CompanionPathMap auto-expanded. Hop badges with confidence indicators above the map.</p>
+  <p><code>path</code> <code>decode</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 190" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="190" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="190" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <text x="16" y="24" font-size="11" fill="rgba(255,255,255,0.5)" font-weight="500">🗺️ Path Decode</text>
+    <!-- Hop badges row -->
+    <g transform="translate(16, 34)">
+      <!-- Hop 1 -->
+      <rect x="0" y="0" width="82" height="24" rx="6" fill="rgba(59,130,246,0.1)"/>
+      <text x="8" y="16" font-size="10" fill="#3B82F6" font-family="monospace">AB</text>
+      <text x="24" y="16" font-size="9" fill="rgba(255,255,255,0.6)">→ Hilltop</text>
+      <text x="72" y="16" font-size="8" fill="#22C55E">🎯</text>
+      <!-- Arrow -->
+      <text x="88" y="16" font-size="10" fill="rgba(255,255,255,0.2)">›</text>
+      <!-- Hop 2 -->
+      <rect x="96" y="0" width="98" height="24" rx="6" fill="rgba(59,130,246,0.1)"/>
+      <text x="104" y="16" font-size="10" fill="#3B82F6" font-family="monospace">CD</text>
+      <text x="120" y="16" font-size="9" fill="rgba(255,255,255,0.6)">→ MtHood</text>
+      <text x="180" y="16" font-size="8" fill="#F59E0B">📍</text>
+      <!-- Arrow -->
+      <text x="200" y="16" font-size="10" fill="rgba(255,255,255,0.2)">›</text>
+      <!-- Hop 3 -->
+      <rect x="208" y="0" width="52" height="24" rx="6" fill="rgba(239,68,68,0.08)"/>
+      <text x="216" y="16" font-size="10" fill="#EF4444" font-family="monospace">EF</text>
+      <text x="232" y="16" font-size="9" fill="rgba(255,255,255,0.4)">→ ?</text>
+    </g>
+    <!-- Map placeholder (CompanionPathMap lives here) -->
+    <g transform="translate(12, 66)">
+      <rect width="296" height="112" rx="10" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+      <!-- Fake map content -->
+      <text x="148" y="60" font-size="11" fill="rgba(255,255,255,0.15)" text-anchor="middle">CompanionPathMap</text>
+      <!-- Nodes -->
+      <circle cx="60" cy="40" r="6" fill="#3B82F6" opacity="0.4"/>
+      <circle cx="148" cy="70" r="6" fill="#3B82F6" opacity="0.4"/>
+      <circle cx="240" cy="50" r="6" fill="#EF4444" opacity="0.3"/>
+      <line x1="60" y1="40" x2="148" y2="70" stroke="#3B82F6" stroke-width="1.5" opacity="0.3"/>
+      <line x1="148" y1="70" x2="240" y2="50" stroke="#3B82F6" stroke-width="1.5" opacity="0.2" stroke-dasharray="4 3"/>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── TestWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>TestWidget</h3>
+  <p>Signal quality card with SNR bars, hop count, path, distance. Clean data-box layout.</p>
+  <p><code>test</code> <code>t</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 140" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="140" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="140" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <text x="16" y="26" font-size="12" fill="rgba(255,255,255,0.5)" font-weight="600">📶 Link Test</text>
+    <!-- Signal bars -->
+    <g transform="translate(16, 40)">
+      <rect x="0" y="28" width="8" height="12" rx="2" fill="#22C55E"/>
+      <rect x="12" y="20" width="8" height="20" rx="2" fill="#22C55E"/>
+      <rect x="24" y="12" width="8" height="28" rx="2" fill="#22C55E"/>
+      <rect x="36" y="4" width="8" height="36" rx="2" fill="#22C55E"/>
+      <rect x="48" y="0" width="8" height="40" rx="2" fill="rgba(255,255,255,0.1)"/><!-- empty bar -->
+    </g>
+    <!-- SNR/RSSI values -->
+    <g transform="translate(76, 44)">
+      <text x="0" y="12" font-size="24" fill="white" font-weight="700">+6.5</text>
+      <text x="68" y="6" font-size="10" fill="rgba(255,255,255,0.4)">SNR dB</text>
+      <text x="68" y="20" font-size="10" fill="rgba(255,255,255,0.4)">-82 dBm</text>
+    </g>
+    <!-- Phrase echo -->
+    <g transform="translate(200, 44)">
+      <rect x="0" y="0" width="104" height="28" rx="6" fill="rgba(255,255,255,0.04)"/>
+      <text x="52" y="11" font-size="8" fill="rgba(255,255,255,0.3)" text-anchor="middle">Echo phrase</text>
+      <text x="52" y="22" font-size="10" fill="rgba(255,255,255,0.6)" text-anchor="middle">"Hello mesh!"</text>
+    </g>
+    <!-- Bottom row: hops, path, distance -->
+    <g transform="translate(16, 96)">
+      <rect x="0" y="0" width="60" height="28" rx="7" fill="rgba(59,130,246,0.08)"/>
+      <text x="30" y="12" font-size="8" fill="rgba(255,255,255,0.4)" text-anchor="middle">Hops</text>
+      <text x="30" y="24" font-size="11" fill="#3B82F6" text-anchor="middle" font-weight="600">3</text>
+      
+      <rect x="68" y="0" width="140" height="28" rx="7" fill="rgba(255,255,255,0.04)"/>
+      <text x="138" y="12" font-size="8" fill="rgba(255,255,255,0.4)" text-anchor="middle">Path</text>
+      <text x="138" y="24" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle" font-family="monospace">AB → CD → EF</text>
+      
+      <rect x="216" y="0" width="88" height="28" rx="7" fill="rgba(255,255,255,0.04)"/>
+      <text x="260" y="12" font-size="8" fill="rgba(255,255,255,0.4)" text-anchor="middle">Distance</text>
+      <text x="260" y="24" font-size="11" fill="rgba(255,255,255,0.6)" text-anchor="middle" font-weight="500">14.2 km</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── StatsWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>StatsWidget</h3>
+  <p>Two modes: summary counts (cmds/replies/top) or leaderboard with micro bar chart.</p>
+  <p><code>stats</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="180" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="180" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <text x="16" y="26" font-size="12" fill="rgba(255,255,255,0.5)" font-weight="600">📊 Bot Stats (24h)</text>
+    <!-- Summary row -->
+    <g transform="translate(16, 38)">
+      <rect x="0" y="0" width="92" height="40" rx="8" fill="rgba(59,130,246,0.08)"/>
+      <text x="46" y="16" font-size="9" fill="rgba(255,255,255,0.4)" text-anchor="middle">Commands</text>
+      <text x="46" y="32" font-size="16" fill="#3B82F6" text-anchor="middle" font-weight="700">42</text>
+      
+      <rect x="100" y="0" width="92" height="40" rx="8" fill="rgba(34,197,94,0.08)"/>
+      <text x="146" y="16" font-size="9" fill="rgba(255,255,255,0.4)" text-anchor="middle">Replies</text>
+      <text x="146" y="32" font-size="16" fill="#22C55E" text-anchor="middle" font-weight="700">40</text>
+      
+      <rect x="200" y="0" width="104" height="40" rx="8" fill="rgba(255,255,255,0.04)"/>
+      <text x="252" y="16" font-size="9" fill="rgba(255,255,255,0.4)" text-anchor="middle">Top Cmd</text>
+      <text x="252" y="32" font-size="13" fill="white" text-anchor="middle" font-weight="600">wx (15)</text>
+    </g>
+    <!-- Leaderboard -->
+    <g transform="translate(16, 90)">
+      <line x1="0" y1="-4" x2="288" y2="-4" stroke="rgba(255,255,255,0.06)"/>
+      <text x="0" y="10" font-size="10" fill="rgba(255,255,255,0.35)" font-weight="600">Top Users</text>
+      <!-- Entry 1 -->
+      <text x="0" y="32" font-size="11" fill="rgba(255,255,255,0.3)" font-weight="600">1.</text>
+      <text x="18" y="32" font-size="11" fill="white">NodeAlpha</text>
+      <rect x="100" y="22" width="168" height="12" rx="3" fill="rgba(255,255,255,0.04)"/>
+      <rect x="100" y="22" width="168" height="12" rx="3" fill="rgba(59,130,246,0.2)"/>
+      <text x="274" y="32" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="end">8</text>
+      <!-- Entry 2 -->
+      <text x="0" y="52" font-size="11" fill="rgba(255,255,255,0.3)" font-weight="600">2.</text>
+      <text x="18" y="52" font-size="11" fill="rgba(255,255,255,0.7)">BetaNode</text>
+      <rect x="100" y="42" width="168" height="12" rx="3" fill="rgba(255,255,255,0.04)"/>
+      <rect x="100" y="42" width="105" height="12" rx="3" fill="rgba(59,130,246,0.15)"/>
+      <text x="274" y="52" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="end">5</text>
+      <!-- Entry 3 -->
+      <text x="0" y="72" font-size="11" fill="rgba(255,255,255,0.3)" font-weight="600">3.</text>
+      <text x="18" y="72" font-size="11" fill="rgba(255,255,255,0.7)">GammaRepeater</text>
+      <rect x="100" y="62" width="168" height="12" rx="3" fill="rgba(255,255,255,0.04)"/>
+      <rect x="100" y="62" width="63" height="12" rx="3" fill="rgba(59,130,246,0.1)"/>
+      <text x="274" y="72" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="end">3</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── SportsWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>SportsWidget</h3>
+  <p>Game score cards stacked vertically. Live games pulse, final games badge, scheduled show time.</p>
+  <p><code>sports</code> <code>scores</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 150" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="150" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="150" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <text x="16" y="24" font-size="11" fill="rgba(255,255,255,0.5)" font-weight="600">🏆 Scores</text>
+    <!-- Game 1 — Live -->
+    <g transform="translate(12, 34)">
+      <rect width="296" height="46" rx="8" fill="rgba(255,255,255,0.04)"/>
+      <!-- Live indicator -->
+      <circle cx="14" cy="23" r="4" fill="#EF4444" opacity="0.8"/>
+      <circle cx="14" cy="23" r="4" fill="#EF4444" opacity="0.3">
+        <animate attributeName="r" values="4;7;4" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite"/>
+      </circle>
+      <text x="26" y="19" font-size="14">🏈</text>
+      <text x="46" y="19" font-size="12" fill="white" font-weight="600">SEA 24</text>
+      <text x="108" y="19" font-size="11" fill="rgba(255,255,255,0.3)">–</text>
+      <text x="120" y="19" font-size="12" fill="rgba(255,255,255,0.7)">SF 17</text>
+      <rect x="176" y="7" width="80" height="18" rx="4" fill="rgba(239,68,68,0.1)"/>
+      <text x="216" y="19" font-size="9" fill="#EF4444" text-anchor="middle" font-weight="600">4th · 8:42</text>
+    </g>
+    <!-- Game 2 — Final -->
+    <g transform="translate(12, 86)">
+      <rect width="296" height="46" rx="8" fill="rgba(255,255,255,0.04)"/>
+      <text x="14" y="19" font-size="14">⚾</text>
+      <text x="34" y="19" font-size="12" fill="white" font-weight="600">SEA 5</text>
+      <text x="82" y="19" font-size="11" fill="rgba(255,255,255,0.3)">–</text>
+      <text x="94" y="19" font-size="12" fill="rgba(255,255,255,0.7)">OAK 3</text>
+      <rect x="152" y="7" width="52" height="18" rx="4" fill="rgba(255,255,255,0.06)"/>
+      <text x="178" y="19" font-size="9" fill="rgba(255,255,255,0.4)" text-anchor="middle" font-weight="500">Final</text>
+      <!-- Winner indicator -->
+      <text x="34" y="36" font-size="9" fill="#22C55E">W</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+</div><!-- end Tier 1 -->
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- TIER 2 — ENHANCED TEXT WIDGETS -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+<div class="tier">
+<h2>Tier 2 — Enhanced Text Widgets</h2>
+
+<!-- ── WeatherAlertWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>WeatherAlertWidget</h3>
+  <p>Amber/red gradient banner. Severity-colored left border. Expandable truncation for long alerts.</p>
+  <p><code>⚠️ alert response</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 90" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="alert-bg" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="rgba(245,158,11,0.15)"/>
+        <stop offset="100%" stop-color="rgba(239,68,68,0.08)"/>
+      </linearGradient>
+    </defs>
+    <rect width="320" height="90" rx="14" fill="url(#alert-bg)"/>
+    <rect width="320" height="90" rx="14" fill="none" stroke="rgba(245,158,11,0.2)" stroke-width="1"/>
+    <!-- Left severity stripe -->
+    <rect x="0" y="0" width="4" height="90" rx="2" fill="#F59E0B"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Alert icon + severity -->
+    <g transform="translate(16, 16)">
+      <text x="0" y="14" font-size="16">⚠️</text>
+      <rect x="26" y="2" width="92" height="16" rx="4" fill="rgba(245,158,11,0.2)"/>
+      <text x="72" y="14" font-size="9" fill="#F59E0B" text-anchor="middle" font-weight="700">WIND ADVISORY</text>
+    </g>
+    <!-- Alert text -->
+    <g transform="translate(16, 44)">
+      <text x="0" y="12" font-size="11" fill="rgba(255,255,255,0.8)" font-weight="400">
+        <tspan>NW winds 25-35 mph with gusts to</tspan>
+      </text>
+      <text x="0" y="28" font-size="11" fill="rgba(255,255,255,0.8)">
+        <tspan>50 mph until 6PM PST</tspan>
+      </text>
+    </g>
+    <!-- Expand hint for long alerts -->
+    <text x="296" y="76" font-size="9" fill="rgba(255,255,255,0.2)" text-anchor="end">tap to expand ›</text>
+  </svg>
+</div>
+</div>
+
+<!-- ── AlertWidget (NWS) ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>AlertWidget</h3>
+  <p>Standalone NWS alert card (from <code>alert</code> command). Red variant for severe.</p>
+  <p><code>alert</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 80" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="80" rx="14" fill="rgba(239,68,68,0.1)"/>
+    <rect width="320" height="80" rx="14" fill="none" stroke="rgba(239,68,68,0.25)" stroke-width="1"/>
+    <rect x="0" y="0" width="4" height="80" rx="2" fill="#EF4444"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <g transform="translate(16, 16)">
+      <text x="0" y="14" font-size="16">🚨</text>
+      <rect x="26" y="2" width="102" height="16" rx="4" fill="rgba(239,68,68,0.2)"/>
+      <text x="77" y="14" font-size="9" fill="#EF4444" text-anchor="middle" font-weight="700">TORNADO WARNING</text>
+    </g>
+    <text x="16" y="54" font-size="11" fill="rgba(255,255,255,0.8)">Take shelter immediately. Tornado</text>
+    <text x="16" y="68" font-size="11" fill="rgba(255,255,255,0.8)">confirmed in your area until 4:30 PM.</text>
+  </svg>
+</div>
+</div>
+
+<!-- ── JokeWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>JokeWidget</h3>
+  <p>Card with emoji header. Two-part jokes: setup visible, delivery revealed on tap with a subtle slide animation.</p>
+  <p><code>joke</code> <code>dadjoke</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="120" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="120" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Emoji + type badge -->
+    <text x="16" y="30" font-size="22">🎭</text>
+    <rect x="46" y="14" width="42" height="16" rx="4" fill="rgba(236,72,153,0.1)"/>
+    <text x="67" y="26" font-size="9" fill="#EC4899" text-anchor="middle" font-weight="600">Joke</text>
+    <!-- Setup text -->
+    <text x="16" y="56" font-size="13" fill="white" font-weight="400">Why do programmers prefer</text>
+    <text x="16" y="74" font-size="13" fill="white">dark mode?</text>
+    <!-- Delivery (revealed state) -->
+    <line x1="16" y1="84" x2="304" y2="84" stroke="rgba(255,255,255,0.06)"/>
+    <text x="16" y="104" font-size="13" fill="rgba(255,255,255,0.7)" font-style="italic">Because light attracts bugs! 🐛</text>
+    <!-- Tap hint overlay (shown before reveal) -->
+    <!-- <rect x="16" y="86" width="288" height="24" rx="6" fill="rgba(255,255,255,0.04)"/>
+    <text x="160" y="102" font-size="10" fill="rgba(255,255,255,0.2)" text-anchor="middle">tap to reveal ✨</text> -->
+  </svg>
+</div>
+</div>
+
+<!-- ── DiceWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>DiceWidget</h3>
+  <p>Dice emoji + die type label, individual results in circles, total. Supports mixed dice.</p>
+  <p><code>dice</code> <code>roll</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="100" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="100" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Header -->
+    <text x="16" y="28" font-size="18">🎲</text>
+    <text x="42" y="28" font-size="12" fill="rgba(255,255,255,0.5)" font-weight="500">2d6</text>
+    <!-- Dice results -->
+    <g transform="translate(16, 42)">
+      <!-- Die 1 -->
+      <rect x="0" y="0" width="40" height="40" rx="10" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="20" y="27" font-size="20" fill="white" text-anchor="middle" font-weight="700">3</text>
+      <!-- Plus -->
+      <text x="52" y="27" font-size="16" fill="rgba(255,255,255,0.2)">+</text>
+      <!-- Die 2 -->
+      <rect x="68" y="0" width="40" height="40" rx="10" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="88" y="27" font-size="20" fill="white" text-anchor="middle" font-weight="700">5</text>
+      <!-- Equals -->
+      <text x="120" y="27" font-size="16" fill="rgba(255,255,255,0.2)">=</text>
+      <!-- Total -->
+      <rect x="136" y="0" width="52" height="40" rx="10" fill="rgba(59,130,246,0.1)" stroke="rgba(59,130,246,0.2)" stroke-width="1"/>
+      <text x="162" y="27" font-size="22" fill="#3B82F6" text-anchor="middle" font-weight="800">8</text>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ── CatFactWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>CatFactWidget</h3>
+  <p>Subtle cat-themed card with paw print motif. Fact text + trailing emoji preserved.</p>
+  <p><code>catfact</code> <code>meow</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 80" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="80" rx="14" fill="#18181b" opacity="0.9"/>
+    <rect width="320" height="80" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <text x="298" y="18" font-size="10" fill="rgba(255,255,255,0.3)" text-anchor="end">🤖</text>
+    <!-- Paw print watermark -->
+    <text x="274" y="66" font-size="40" fill="rgba(255,255,255,0.02)">🐾</text>
+    <!-- Cat emoji + badge -->
+    <text x="16" y="28" font-size="16">🐱</text>
+    <rect x="40" y="14" width="58" height="16" rx="4" fill="rgba(245,158,11,0.08)"/>
+    <text x="69" y="26" font-size="9" fill="#F59E0B" text-anchor="middle" font-weight="600">Cat Fact</text>
+    <!-- Fact text -->
+    <text x="16" y="52" font-size="12" fill="rgba(255,255,255,0.8)">Cats can rotate their ears 180°</text>
+    <text x="16" y="68" font-size="12" fill="rgba(255,255,255,0.8)">independently to pinpoint sounds. 👂</text>
+  </svg>
+</div>
+</div>
+
+</div><!-- end Tier 2 -->
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- TIER 3 — FALLBACK -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+<div class="tier">
+<h2>Tier 3 — Styled Bot Text Fallback</h2>
+
+<!-- ── BotTextWidget ── -->
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>BotTextWidget</h3>
+  <p>For ping, magic8, and any unclassified bot response. Visually distinct from normal bubbles with subtle bot indicator + glass card treatment.</p>
+  <p><code>ping</code> <code>magic8</code> <code>fallback</code></p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <!-- Ping example -->
+  <svg class="widget" viewBox="0 0 320 50" xmlns="http://www.w3.org/2000/svg" style="margin-bottom: 8px">
+    <rect width="320" height="50" rx="12" fill="rgba(255,255,255,0.03)"/>
+    <rect width="320" height="50" rx="12" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+    <text x="16" y="20" font-size="9" fill="rgba(91,91,214,0.5)">🤖 bot response</text>
+    <text x="16" y="38" font-size="13" fill="rgba(255,255,255,0.8)">Pong!</text>
+  </svg>
+  <!-- Magic 8 example -->
+  <svg class="widget" viewBox="0 0 320 50" xmlns="http://www.w3.org/2000/svg">
+    <rect width="320" height="50" rx="12" fill="rgba(255,255,255,0.03)"/>
+    <rect width="320" height="50" rx="12" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+    <text x="16" y="20" font-size="9" fill="rgba(91,91,214,0.5)">🤖 bot response</text>
+    <text x="16" y="38" font-size="13" fill="rgba(255,255,255,0.8)">🎱 Signs point to yes</text>
+  </svg>
+</div>
+</div>
+
+</div><!-- end Tier 3 -->
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- CONTAINER CONCEPT -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
+<div class="tier">
+<h2>Unified Container — BotWidgetContainer</h2>
+
+<div class="widget-row">
+<div class="widget-meta">
+  <h3>Container Anatomy</h3>
+  <p>Every widget sits inside this container. Provides: glass card, 🤖 badge, consistent padding, rounded corners matching ChatBubble's <code>rounded-2xl rounded-tl-md</code>.</p>
+  <p>Replaces ChatBubble's inner <code>&lt;div&gt;</code> — avatar + sender name row stays from the existing layout.</p>
+</div>
+<div class="chat-context">
+  <div class="avatar-row">
+    <div class="avatar">🤖</div>
+    <span class="sender-name">HowlBot <span class="bot-badge">🤖 bot</span></span>
+  </div>
+  <svg class="widget" viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg">
+    <!-- Outer card (container) -->
+    <rect width="320" height="180" rx="14" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+    <!-- Annotations -->
+    <!-- Top-right bot badge -->
+    <rect x="258" y="8" width="52" height="16" rx="8" fill="rgba(91,91,214,0.1)" stroke="rgba(91,91,214,0.15)" stroke-width="0.5"/>
+    <text x="284" y="19" font-size="8" fill="rgba(91,91,214,0.6)" text-anchor="middle">🤖 bot</text>
+    <!-- Annotation arrows -->
+    <line x1="310" y1="16" x2="326" y2="16" stroke="rgba(255,255,255,0.15)" stroke-width="0.5" marker-end="none"/>
+    <!-- Content area label -->
+    <rect x="16" y="36" width="288" height="108" rx="10" fill="none" stroke="rgba(59,130,246,0.2)" stroke-width="1" stroke-dasharray="4 3"/>
+    <text x="160" y="94" font-size="12" fill="rgba(59,130,246,0.3)" text-anchor="middle">Widget Content Area</text>
+    <text x="160" y="110" font-size="10" fill="rgba(59,130,246,0.2)" text-anchor="middle">SVGs · Custom Fonts · Canvas · HTML</text>
+    <!-- Padding indicators -->
+    <line x1="8" y1="36" x2="8" y2="144" stroke="rgba(245,158,11,0.2)" stroke-width="0.5"/>
+    <text x="6" y="92" font-size="7" fill="rgba(245,158,11,0.3)" transform="rotate(-90 6 92)">padding 16px</text>
+    <!-- Radius indicator -->
+    <text x="16" y="172" font-size="8" fill="rgba(255,255,255,0.15)">radius-inset (12px) · bg-surface/80 · backdrop-blur · ring-edge-subtle</text>
+  </svg>
+</div>
+</div>
+
+</div><!-- end Container concept -->
+
+<p style="color: var(--zinc-600); font-size: 12px; margin-top: 40px; border-top: 1px solid rgba(255,255,255,0.04); padding-top: 16px;">
+  HOWL Bot Wireframes v0.1 — First-draft sketches for collaboration. All colors reference pymc_console CSS variables (sys-*, zinc-*). 
+  Open this file in a browser to preview.
+</p>
+
+</body>
+</html>
