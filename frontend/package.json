@@ -1,6 +1,6 @@
 {
   "name": "pymc_console",
-  "version": "0.9.322",
+  "version": "0.9.323",
   "description": "Vite + React Dashboard for pyMC_Repeater",
   "private": true,
   "type": "module",
