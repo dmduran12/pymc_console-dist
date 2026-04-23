@@ -123,8 +123,36 @@ prompt_yes_no() {
 # Status Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-repeater_installed() { [[ -d "$INSTALL_DIR" ]] && [[ -f "$INSTALL_DIR/pyproject.toml" ]]; }
-console_installed()  { [[ -d "$UI_DIR" ]]; }
+# Tiered Repeater-presence probe. Returns 0 when ANY of the following is true,
+# in order of signal strength:
+#   1. `pip3 show pymc-repeater` succeeds (the source of truth)
+#   2. systemd knows about pymc-repeater.service (unit file present)
+#   3. $INSTALL_DIR/pyproject.toml exists (edge-case layout fallback)
+repeater_installed() {
+    if command -v pip3 &>/dev/null && pip3 show pymc-repeater &>/dev/null; then
+        return 0
+    fi
+    if command -v systemctl &>/dev/null \
+        && systemctl list-unit-files "pymc-repeater.service" &>/dev/null \
+        && [[ -n "$(systemctl list-unit-files --no-legend --no-pager "pymc-repeater.service" 2>/dev/null)" ]]; then
+        return 0
+    fi
+    [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/pyproject.toml" ]]
+}
+
+console_installed() { [[ -d "$UI_DIR" ]]; }
+
+pip_version() {
+    local pkg="$1"
+    command -v pip3 &>/dev/null || return 0
+    pip3 show "$pkg" 2>/dev/null | awk '/^Version:/ {print $2; exit}'
+}
+
+get_repeater_version() {
+    local v
+    v="$(pip_version pymc-repeater)"
+    echo "${v:-unknown}"
+}
 
 get_console_version() {
     if [[ -f "$UI_DIR/VERSION" ]]; then
@@ -136,10 +164,107 @@ get_console_version() {
     fi
 }
 
+# Read-only systemd probes (safe to call as non-root).
+service_unit_exists() {
+    command -v systemctl &>/dev/null || return 1
+    [[ -n "$(systemctl list-unit-files --no-legend --no-pager "pymc-repeater.service" 2>/dev/null)" ]]
+}
+service_is_active()  { command -v systemctl &>/dev/null && systemctl is-active  pymc-repeater &>/dev/null; }
+service_is_enabled() { command -v systemctl &>/dev/null && systemctl is-enabled pymc-repeater &>/dev/null; }
+
 require_root() {
     if [[ "$EUID" -ne 0 ]]; then
         print_error "This command requires root. Run: sudo $0 $1"
         return 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Preflight + shared error messaging
+# ---------------------------------------------------------------------------
+
+# Print a non-mutating "Detected:" block summarising what we see. Returns 1
+# iff Repeater is not installed (callers use this to decide whether to bail).
+preflight_check() {
+    local repeater_ok=false
+    local config_ok=false
+    local yq_ok=false
+    local unit_state="not found"
+    repeater_installed && repeater_ok=true
+    [[ -f "$CONFIG_DIR/config.yaml" ]] && config_ok=true
+    command -v yq &>/dev/null && yq_ok=true
+    if service_unit_exists; then
+        local enabled="disabled"
+        service_is_enabled && enabled="enabled"
+        local active="inactive"
+        service_is_active && active="active"
+        unit_state="${enabled}, ${active}"
+    fi
+
+    local repeater_line
+    if [[ "$repeater_ok" == true ]]; then
+        repeater_line="${GREEN}found${NC} (v$(get_repeater_version))"
+    else
+        repeater_line="${RED}not found${NC}"
+    fi
+    local config_line
+    if [[ "$config_ok" == true ]]; then
+        config_line="${GREEN}present${NC} ($CONFIG_DIR/config.yaml)"
+    else
+        config_line="${YELLOW}missing${NC} ($CONFIG_DIR/config.yaml)"
+    fi
+    local yq_line
+    if [[ "$yq_ok" == true ]]; then
+        yq_line="${GREEN}present${NC}"
+    else
+        yq_line="${YELLOW}missing${NC} (web_path patch will be skipped)"
+    fi
+    local unit_line
+    if service_unit_exists; then
+        unit_line="${GREEN}${unit_state}${NC}"
+    else
+        unit_line="${YELLOW}not found${NC}"
+    fi
+
+    echo -e "  ${DIM}Preflight:${NC}"
+    echo -e "    pyMC_Repeater: ${repeater_line}"
+    echo -e "    Config file:   ${config_line}"
+    echo -e "    yq:            ${yq_line}"
+    echo -e "    Service unit:  ${unit_line}"
+    echo ""
+
+    if [[ "$repeater_ok" != true ]]; then
+        return 1
+    fi
+    return 0
+}
+
+print_repeater_missing_help() {
+    print_error "pyMC_Repeater is not installed."
+    echo ""
+    echo "    The Console dashboard requires pyMC_Repeater to be installed first."
+    echo "    Install it using upstream's manage.sh:"
+    echo ""
+    echo -e "      ${CYAN}git clone https://github.com/rightup/pyMC_Repeater.git${NC}"
+    echo -e "      ${CYAN}cd pyMC_Repeater && sudo ./manage.sh install${NC}"
+    echo ""
+}
+
+print_service_hint() {
+    # Non-mutating post-op nudge. No action taken, just observability.
+    if ! service_unit_exists; then
+        print_warning "pymc-repeater.service is not registered with systemd."
+        echo "    Install/repair pyMC_Repeater to register the service."
+        return
+    fi
+    if service_is_active; then
+        print_success "pymc-repeater.service is active."
+    else
+        print_warning "pymc-repeater.service is not running."
+        echo -e "    Start it: ${CYAN}sudo systemctl start pymc-repeater${NC}"
+    fi
+    if ! service_is_enabled; then
+        echo -e "    Enable on boot: ${CYAN}sudo systemctl enable pymc-repeater${NC}"
     fi
 }
 
@@ -179,7 +304,16 @@ install_dashboard() {
             print_success "Dashboard updated (web_path preserved)"
         fi
     else
-        print_warning "Could not configure web_path — set web.web_path manually in $config_file"
+        print_warning "Could not configure web_path automatically."
+        if [[ ! -f "$config_file" ]]; then
+            echo -e "    Reason: ${YELLOW}$config_file not found${NC}."
+        elif ! command -v yq &>/dev/null; then
+            echo -e "    Reason: ${YELLOW}yq is not installed${NC}."
+        fi
+        echo -e "    Set it manually with:"
+        echo -e "      ${CYAN}sudo yq -i '.web.web_path = \"$UI_DIR\"' $config_file${NC}"
+        echo -e "    Then restart the service:"
+        echo -e "      ${CYAN}sudo systemctl restart pymc-repeater${NC}"
     fi
 
     local size
@@ -194,15 +328,11 @@ install_dashboard() {
 do_install() {
     require_root "install" || return 1
 
-    if ! repeater_installed; then
-        print_error "pyMC_Repeater is not installed at $INSTALL_DIR"
-        echo ""
-        echo "    The Console dashboard requires pyMC_Repeater to be installed first."
-        echo "    Install it using upstream's manage.sh:"
-        echo ""
-        echo -e "      ${CYAN}git clone https://github.com/rightup/pyMC_Repeater.git${NC}"
-        echo -e "      ${CYAN}cd pyMC_Repeater && sudo ./manage.sh install${NC}"
-        echo ""
+    print_banner
+    echo -e "  ${DIM}Mode: Install Console${NC}"
+    echo ""
+    if ! preflight_check; then
+        print_repeater_missing_help
         return 1
     fi
 
@@ -212,9 +342,6 @@ do_install() {
             return 0
         fi
     fi
-
-    print_banner
-    echo -e "  ${DIM}Mode: Install Console${NC}"
 
     print_step 1 1 "Installing dashboard"
     install_dashboard
@@ -228,6 +355,8 @@ do_install() {
     echo ""
     echo -e "  Dashboard: ${CYAN}http://${ip:-localhost}:8000/${NC}"
     echo ""
+    print_service_hint
+    echo ""
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -237,8 +366,11 @@ do_install() {
 do_upgrade() {
     require_root "upgrade" || return 1
 
-    if ! repeater_installed; then
-        print_error "pyMC_Repeater is not installed. Nothing to upgrade against."
+    print_banner
+    echo -e "  ${DIM}Mode: Upgrade Console${NC}"
+    echo ""
+    if ! preflight_check; then
+        print_repeater_missing_help
         return 1
     fi
 
@@ -271,9 +403,6 @@ do_upgrade() {
     local ui_before ui_after
     ui_before=$(get_console_version)
 
-    print_banner
-    echo -e "  ${DIM}Mode: Upgrade Console${NC}"
-
     print_step 1 1 "Updating dashboard"
     install_dashboard
 
@@ -292,6 +421,8 @@ do_upgrade() {
     echo ""
     echo -e "  Dashboard: ${CYAN}http://${ip:-localhost}:8000/${NC}"
     echo ""
+    print_service_hint
+    echo ""
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -302,14 +433,21 @@ do_uninstall() {
     require_root "uninstall" || return 1
 
     local has_console=false
+    local has_repeater=false
     console_installed && has_console=true
+    repeater_installed && has_repeater=true
 
     print_banner
     echo -e "  ${DIM}Detected:${NC}"
+    local repeater_state
+    if [[ "$has_repeater" == true ]]; then
+        repeater_state="${DIM}present (v$(get_repeater_version)) — will NOT be touched${NC}"
+    else
+        repeater_state="${DIM}not found${NC}"
+    fi
+    echo -e "    Repeater:  ${repeater_state}"
     echo -e "    Console:   $([[ "$has_console" == true ]] && echo "${GREEN}found${NC} ($CONSOLE_DIR)" || echo "${DIM}not found${NC}")"
     echo -e "    This repo: ${GREEN}$SCRIPT_DIR${NC}"
-    echo ""
-    echo -e "  ${DIM}Note: pyMC_Repeater will NOT be touched. Use upstream's manage.sh to remove it.${NC}"
     echo ""
 
     if [[ "$has_console" == false ]]; then
