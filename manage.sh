@@ -14,12 +14,12 @@
 #   • On fresh install, point the Repeater's web.web_path at our dashboard
 #   • On upgrade, refresh dashboard assets while preserving web_path
 #   • On uninstall, remove /opt/pymc_console (Repeater is left untouched)
-#   • Thin systemctl wrappers for the pymc-repeater service
 #
 # WHAT WE DO NOT DO (anymore):
 #   • Clone, install, upgrade, or uninstall pyMC_Repeater
 #   • Radio/GPIO configuration
-#   • systemd unit management
+#   • systemd unit management (start/stop/restart/status/logs — use upstream's
+#     manage.sh or systemctl/journalctl directly for the pymc-repeater service)
 #   • Any TUI (whiptail/dialog). All prompts are plain terminal I/O.
 #
 # REPEATER REFERENCES:
@@ -27,7 +27,6 @@
 #     (we refuse to install Console without it)
 #   • $CONFIG_DIR/config.yaml is patched (web.web_path) on fresh install
 #   • $REPEATER_USER:$REPEATER_GROUP is used for ownership of our files
-#   • The service name matches upstream's unit
 #
 # NON-INTERACTIVE MODE:
 #   Pass --yes (before the verb) or set ASSUME_YES=1 to auto-confirm prompts.
@@ -50,9 +49,6 @@ REPEATER_GROUP="repeater"
 # Console paths (we own these)
 CONSOLE_DIR="/opt/pymc_console"
 UI_DIR="$CONSOLE_DIR/web/html"
-
-# Service (owned by upstream)
-SERVICE_NAME="pymc-repeater"
 
 # Release artifacts
 UI_REPO="dmduran12/pymc_console-dist"
@@ -129,18 +125,6 @@ prompt_yes_no() {
 
 repeater_installed() { [[ -d "$INSTALL_DIR" ]] && [[ -f "$INSTALL_DIR/pyproject.toml" ]]; }
 console_installed()  { [[ -d "$UI_DIR" ]]; }
-service_running()    { systemctl is-active "$SERVICE_NAME" &>/dev/null; }
-
-pip_version() {
-    local pkg="$1"
-    pip3 show "$pkg" 2>/dev/null | awk '/^Version:/ {print $2; exit}' || true
-}
-
-get_repeater_version() {
-    local v
-    v="$(pip_version pymc-repeater)"
-    echo "${v:-unknown}"
-}
 
 get_console_version() {
     if [[ -f "$UI_DIR/VERSION" ]]; then
@@ -240,8 +224,6 @@ do_install() {
     echo ""
     echo -e "${GREEN}${BOLD}Console Installed!${NC}"
     echo ""
-    echo -e "  ${DIM}Versions:${NC}"
-    echo -e "    pyMC Repeater: ${CYAN}$(get_repeater_version)${NC}"
     echo -e "    pyMC Console:  ${CYAN}v$(get_console_version)${NC}"
     echo ""
     echo -e "  Dashboard: ${CYAN}http://${ip:-localhost}:8000/${NC}"
@@ -302,8 +284,6 @@ do_upgrade() {
     echo ""
     echo -e "${GREEN}${BOLD}Upgrade Complete!${NC}"
     echo ""
-    echo -e "  ${DIM}Versions:${NC}"
-    echo -e "    pyMC Repeater: ${CYAN}$(get_repeater_version)${NC}"
     if [[ "$ui_before" != "$ui_after" ]]; then
         echo -e "    pyMC Console:  ${DIM}v$ui_before${NC} → ${CYAN}v$ui_after${NC}"
     else
@@ -379,54 +359,6 @@ do_uninstall() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Service Control
-# ─────────────────────────────────────────────────────────────────────────────
-
-do_start() {
-    require_root "start" || return 1
-    systemctl start "$SERVICE_NAME"
-    sleep 1
-    if service_running; then
-        echo "✓ Service started"
-    else
-        echo "✗ Service failed to start" >&2
-        return 1
-    fi
-}
-
-do_stop() {
-    require_root "stop" || return 1
-    systemctl stop "$SERVICE_NAME"
-    echo "✓ Service stopped"
-}
-
-do_restart() {
-    require_root "restart" || return 1
-    systemctl restart "$SERVICE_NAME"
-    sleep 1
-    if service_running; then
-        echo "✓ Service restarted"
-    else
-        echo "✗ Service failed to start" >&2
-        return 1
-    fi
-}
-
-do_status() {
-    echo "pyMC Repeater:  $(get_repeater_version)"
-    if console_installed; then
-        echo "pyMC Console:   v$(get_console_version)"
-    else
-        echo "pyMC Console:   not installed"
-    fi
-    echo "Service:        $(service_running && echo "running" || echo "stopped")"
-}
-
-do_logs() {
-    journalctl -u "$SERVICE_NAME" -f
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Help / CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -440,11 +372,6 @@ Commands:
   install        Install the Console dashboard (requires pyMC_Repeater)
   upgrade        Refresh Console dashboard assets (preserves web_path)
   uninstall      Remove Console dashboard and this repo
-  start          Start the pymc-repeater service
-  stop           Stop the pymc-repeater service
-  restart        Restart the pymc-repeater service
-  status         Show Repeater + Console versions and service state
-  logs           Tail the pymc-repeater service logs
   -h, --help     Show this help
 
 Flags:
@@ -452,10 +379,9 @@ Flags:
 
 Notes:
   • This script manages the Console dashboard only. pyMC_Repeater itself
-    must be installed separately using upstream's manage.sh:
+    (install, upgrade, uninstall, service control, logs, radio/GPIO) must
+    be managed using upstream's manage.sh:
       https://github.com/rightup/pyMC_Repeater
-
-  • Radio/GPIO configuration is handled by pyMC_Repeater, not by this script.
 EOF
 }
 
@@ -519,11 +445,19 @@ case "${1:-}" in
         esac
         ;;
     uninstall) do_uninstall ;;
-    start)     do_start ;;
-    stop)      do_stop ;;
-    restart)   do_restart ;;
-    status)    do_status ;;
-    logs)      do_logs ;;
+    start|stop|restart|status|logs)
+        print_error "\`$1\` is not managed by pymc_console."
+        echo "    Service control, status, and logs belong to pyMC_Repeater."
+        echo "    Use upstream's manage.sh, or run systemctl/journalctl directly:"
+        echo ""
+        if [[ "$1" == "logs" ]]; then
+            echo -e "      ${CYAN}sudo journalctl -u pymc-repeater -f${NC}"
+        else
+            echo -e "      ${CYAN}sudo systemctl $1 pymc-repeater${NC}"
+        fi
+        echo ""
+        exit 1
+        ;;
     *)
         print_error "Unknown command: $1"
         show_help

@@ -1,66 +1,110 @@
-# Installing pyMC Console UI
+# Installing pyMC Console
 
-This guide covers standalone UI installation. For full pyMC Console with manage.sh installer, see [README.md](README.md).
+This guide covers **manual** installation of the Console dashboard (without `manage.sh`). For the standard installer workflow, see [README.md](README.md).
 
-## Quick Install (Standalone UI)
+## Prerequisite
 
-Download and extract the latest release to your pyMC_Repeater's web directory:
+An existing [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) installation. The Console dashboard is served by pyMC_Repeater's CherryPy server; installing it on its own does nothing useful.
+
+Verify Repeater is installed:
 
 ```bash
-# Download the latest release
-cd /tmp
-wget https://github.com/dmduran12/pymc_console/releases/latest/download/pymc-ui-latest.tar.gz
-
-# Extract to pyMC_Repeater's web directory
-sudo mkdir -p /opt/pymc_repeater/repeater/web/html
-sudo tar -xzf pymc-ui-latest.tar.gz -C /opt/pymc_repeater/repeater/web/html/
-
-# Set proper permissions
-sudo chown -R repeater:repeater /opt/pymc_repeater/repeater/web/html
-
-# Clean up
-rm pymc-ui-latest.tar.gz
+ls /opt/pymc_repeater/pyproject.toml
 ```
-
-The dashboard will be served at `http://<your-pi-ip>:8000/`
 
 ---
 
-## Quick Update
-
-To update an existing installation to the latest version:
-
-```bash
-# Download latest version
-cd /tmp
-wget https://github.com/dmduran12/pymc_console/releases/latest/download/pymc-ui-latest.tar.gz
-
-# Backup and update
-sudo cp -r /opt/pymc_repeater/repeater/web/html /opt/pymc_repeater/repeater/web/html.backup
-sudo rm -rf /opt/pymc_repeater/repeater/web/html/*
-sudo tar -xzf pymc-ui-latest.tar.gz -C /opt/pymc_repeater/repeater/web/html/
-sudo chown -R repeater:repeater /opt/pymc_repeater/repeater/web/html
-
-# Clean up
-rm pymc-ui-latest.tar.gz
-```
-
-## Specific Version
-
-To install a specific version:
-
-```bash
-# Replace v0.2.0 with desired version
-wget https://github.com/dmduran12/pymc_console/releases/download/v0.2.0/pymc-ui-v0.2.0.tar.gz
-sudo tar -xzf pymc-ui-v0.2.0.tar.gz -C /opt/pymc_repeater/repeater/web/html/
-```
-
 ## Using manage.sh (Recommended)
-
-For most users, use the manage.sh installer which handles everything automatically:
 
 ```bash
 git clone https://github.com/dmduran12/pymc_console.git
 cd pymc_console
 sudo ./manage.sh install
 ```
+
+This downloads the latest Console release, extracts to `/opt/pymc_console/web/html`, and patches `web.web_path` in `/etc/pymc_repeater/config.yaml`. See [README.md](README.md) for all commands.
+
+---
+
+## Manual Install (no manage.sh)
+
+If you don't want to clone this repo, install the release tarball directly:
+
+```bash
+# 1. Download the latest Console release
+cd /tmp
+wget https://github.com/dmduran12/pymc_console-dist/releases/latest/download/pymc-ui-latest.tar.gz
+
+# 2. Extract to /opt/pymc_console/web/html (the Console install target)
+sudo mkdir -p /opt/pymc_console/web/html
+sudo tar -xzf pymc-ui-latest.tar.gz -C /opt/pymc_console/web/html/
+
+# 3. Set ownership to the repeater service user
+sudo chown -R repeater:repeater /opt/pymc_console
+
+# 4. Point pyMC_Repeater at the dashboard (one-time)
+#    Open /etc/pymc_repeater/config.yaml and set:
+#      web:
+#        web_path: /opt/pymc_console/web/html
+#    Or, if you have `yq` installed:
+sudo yq -i '.web.web_path = "/opt/pymc_console/web/html"' /etc/pymc_repeater/config.yaml
+
+# 5. Restart the repeater service
+sudo systemctl restart pymc-repeater
+
+# 6. Clean up
+rm /tmp/pymc-ui-latest.tar.gz
+```
+
+The dashboard is now served at `http://<your-pi-ip>:8000/`.
+
+---
+
+## Manual Update
+
+To update an existing Console install without using `manage.sh`:
+
+```bash
+# Download latest version
+cd /tmp
+wget https://github.com/dmduran12/pymc_console-dist/releases/latest/download/pymc-ui-latest.tar.gz
+
+# Backup existing dashboard
+sudo cp -r /opt/pymc_console/web/html /opt/pymc_console/web/html.backup
+
+# Replace contents (web_path is preserved since we keep the same directory)
+sudo rm -rf /opt/pymc_console/web/html/*
+sudo tar -xzf pymc-ui-latest.tar.gz -C /opt/pymc_console/web/html/
+sudo chown -R repeater:repeater /opt/pymc_console
+
+# Clean up
+rm /tmp/pymc-ui-latest.tar.gz
+```
+
+No service restart is required for asset-only updates — clients will pick up the new bundle on next page load. Hard-refresh (`Cmd+Shift+R` / `Ctrl+Shift+R`) if stale.
+
+---
+
+## Specific Version
+
+To install a specific version:
+
+```bash
+# Replace v0.10.0 with the desired version tag
+wget https://github.com/dmduran12/pymc_console-dist/releases/download/v0.10.0/pymc-ui-v0.10.0.tar.gz
+sudo rm -rf /opt/pymc_console/web/html/*
+sudo tar -xzf pymc-ui-v0.10.0.tar.gz -C /opt/pymc_console/web/html/
+sudo chown -R repeater:repeater /opt/pymc_console
+```
+
+---
+
+## Uninstall
+
+```bash
+sudo rm -rf /opt/pymc_console
+# Optional: unset web.web_path in /etc/pymc_repeater/config.yaml to fall back to upstream's Vue.js dashboard.
+sudo systemctl restart pymc-repeater
+```
+
+pyMC_Repeater itself is not affected.

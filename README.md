@@ -17,7 +17,19 @@ pyMC Console gives you full visibility into your mesh network — packet flow, t
 - LoRa radio module (SX1262 or SX1276)
 - Raspberry Pi OS (Bookworm recommended)
 
-### Install
+### Prerequisite: pyMC_Repeater
+
+The Console dashboard plugs into an existing [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) install. If you don't already have it running, install it first using upstream's manage.sh:
+
+```bash
+git clone https://github.com/rightup/pyMC_Repeater.git
+cd pyMC_Repeater
+sudo ./manage.sh install
+```
+
+Upstream handles system dependencies, pip install, radio/GPIO configuration, and the systemd service.
+
+### Install the Console
 
 ```bash
 git clone https://github.com/dmduran12/pymc_console-dist.git pymc_console
@@ -25,34 +37,34 @@ cd pymc_console
 sudo bash manage.sh install
 ```
 
-During installation you'll be prompted to select a pyMC_Repeater branch — **choose `dev`** (the default). The `dev` branch has the latest features and is the recommended target.
+This downloads the latest Console release, extracts it to `/opt/pymc_console/web/html/`, and points pyMC_Repeater's `web.web_path` at it. Open `http://<your-pi-ip>:8000` in a browser.
 
-The installer handles everything:
-
-1. System dependencies (Python, pip, SPI tools)
-2. Clones and installs [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) + [pyMC_core](https://github.com/rightup/pyMC_core)
-3. Deploys the Console web dashboard
-4. Configures and starts the systemd service
-
-Once complete, open `http://<your-pi-ip>:8000` in a browser.
-
-### Upgrade
+### Upgrade the Console
 
 ```bash
 cd pymc_console
 sudo bash manage.sh upgrade
 ```
 
-Choose **Console only** (updates just the dashboard) or **Full Stack** (updates Console + pyMC_Repeater + pyMC_core). Console-only upgrades are safe and fast — your repeater config is untouched.
+Refreshes the dashboard assets in place. Your `web_path` setting is preserved. Repeater, core, and config are untouched. For upgrading pyMC_Repeater itself, use upstream's manage.sh.
 
-### Uninstall
+### Uninstall the Console
 
 ```bash
 cd pymc_console
-sudo bash manage.sh
+sudo bash manage.sh uninstall
 ```
 
-Select **Uninstall** from the menu. Removes all installed files, config, logs, and the systemd service.
+Removes `/opt/pymc_console` and this repo. pyMC_Repeater is **not** touched — use upstream's manage.sh to remove it.
+
+### Non-interactive Mode
+
+All prompts can be auto-confirmed for automation:
+
+```bash
+sudo bash manage.sh --yes install
+ASSUME_YES=1 sudo -E bash manage.sh upgrade
+```
 
 ---
 
@@ -65,7 +77,7 @@ Select **Uninstall** from the menu. Removes all installed files, config, logs, a
 │                                                             │
 │  • React SPA served on port 8000                            │
 │  • Real-time packets, topology, stats, radio config         │
-│  • manage.sh installer handles everything                   │
+│  • manage.sh installs/upgrades the Console dashboard only   │
 └─────────────────────┬───────────────────────────────────────┘
                       │ uses API from
 ┌─────────────────────▼───────────────────────────────────────┐
@@ -89,7 +101,7 @@ Select **Uninstall** from the menu. Removes all installed files, config, logs, a
 
 **Key points:**
 - Console does **not** replace Repeater — they work together
-- `manage.sh` installs both Repeater and Console side-by-side
+- Repeater is installed separately using upstream's manage.sh; our `manage.sh` layers the Console on top
 - You can upgrade Console independently without touching Repeater
 
 ---
@@ -175,31 +187,21 @@ Two polished color schemes and a built-in CLI for direct repeater interaction.
 
 ## Management
 
-### manage.sh Menu
+### manage.sh Commands
+
+`manage.sh` is Console-only. Service control, status, logs, and radio/GPIO configuration are all handled by upstream pyMC_Repeater.
 
 ```bash
-sudo bash manage.sh
+sudo bash manage.sh --help
 ```
 
-```
-┌────────────────────────────────────────────────┐
-│  pyMC Console                                  │
-│  Status: Running                               │
-├────────────────────────────────────────────────┤
-│  install    Fresh installation                 │
-│  upgrade    Upgrade existing                   │
-│  uninstall  Remove everything                  │
-│  status     Show versions                      │
-│  logs       View live logs                     │
-│  exit       Exit                               │
-└────────────────────────────────────────────────┘
-```
+| Verb | Action |
+|------|--------|
+| `install` | Install the Console dashboard into `/opt/pymc_console` and point `web_path` at it. Requires pyMC_Repeater to be installed. |
+| `upgrade` | Refresh the dashboard assets in place. Preserves your `web_path` and self-updates this repo from `origin/main`. |
+| `uninstall` | Remove `/opt/pymc_console` and this repo. Does NOT touch pyMC_Repeater. |
 
-- **Install** — Full Stack or Console-only
-- **Upgrade** — Console-only (fast, safe) or Full Stack (Console + Repeater + Core)
-- **Uninstall** — Removes everything (installation, config, logs, service)
-- **Status** — Installed versions of Core, Repeater, Console
-- **Logs** — Live journal output from the repeater
+Flags: `--yes` / `-y` (or `ASSUME_YES=1`) auto-confirms prompts; `NO_COLOR=1` disables ANSI output.
 
 ### Radio & GPIO Configuration
 
@@ -238,11 +240,15 @@ radio:
 
 ### Service Management
 
+Service lifecycle belongs to pyMC_Repeater's systemd unit. Use `systemctl` / `journalctl` directly:
+
 ```bash
 sudo systemctl status pymc-repeater     # Check status
 sudo systemctl restart pymc-repeater    # Restart
 sudo journalctl -u pymc-repeater -f     # Live logs
 ```
+
+`manage.sh` does not wrap these commands — they are upstream's responsibility.
 
 ---
 
@@ -251,13 +257,13 @@ sudo journalctl -u pymc-repeater -f     # Live logs
 After installation:
 
 ```
-~/pymc_console/               ← This repo (cloned by you)
-~/pyMC_Repeater/              ← Repeater daemon (cloned by manage.sh)
+~/pymc_console/                ← This repo (cloned by you)
+~/pyMC_Repeater/               ← Upstream repeater source (cloned by you)
 
-/opt/pymc_repeater/           ← Installed repeater
-/opt/pymc_console/web/html/   ← Installed dashboard
-/etc/pymc_repeater/config.yaml ← Radio + repeater configuration
-/var/log/pymc_repeater/       ← Log files
+/opt/pymc_repeater/            ← Installed repeater (owned by upstream manage.sh)
+/opt/pymc_console/web/html/    ← Installed dashboard (owned by our manage.sh)
+/etc/pymc_repeater/config.yaml ← Radio + repeater config (we patch web.web_path only)
+/var/log/pymc_repeater/        ← Log files (upstream)
 ```
 
 ---
@@ -302,14 +308,15 @@ LoRa module connects via **SPI** with GPIO pins for reset, busy, and DIO1. Pin m
 
 ### Login fails / "Error 200"
 
-Usually caused by a version mismatch between Console and Repeater.
+Usually caused by a version mismatch between Console and Repeater. Update both:
 
 ```bash
-cd pymc_console
-sudo bash manage.sh upgrade
-```
+# Update pyMC_Repeater (upstream)
+cd ~/pyMC_Repeater && sudo ./manage.sh upgrade
 
-Select **Full pyMC Stack** to update everything to compatible versions.
+# Update the Console dashboard
+cd ~/pymc_console && sudo bash manage.sh upgrade
+```
 
 ### No packets being received
 
