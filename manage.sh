@@ -245,7 +245,7 @@ print_repeater_missing_help() {
     echo "    The Console dashboard requires pyMC_Repeater to be installed first."
     echo "    Install it using upstream's manage.sh:"
     echo ""
-    echo -e "      ${CYAN}git clone https://github.com/rightup/pyMC_Repeater.git${NC}"
+    echo -e "      ${CYAN}git clone https://github.com/pyMC-dev/pyMC_Repeater.git${NC}"
     echo -e "      ${CYAN}cd pyMC_Repeater && sudo ./manage.sh install${NC}"
     echo ""
 }
@@ -519,7 +519,7 @@ Notes:
   • This script manages the Console dashboard only. pyMC_Repeater itself
     (install, upgrade, uninstall, service control, logs, radio/GPIO) must
     be managed using upstream's manage.sh:
-      https://github.com/rightup/pyMC_Repeater
+      https://github.com/pyMC-dev/pyMC_Repeater
 EOF
 }
 

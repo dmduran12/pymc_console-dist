@@ -3,9 +3,9 @@
 [![GitHub Release](https://img.shields.io/github/v/release/dmduran12/pymc_console-dist)](https://github.com/dmduran12/pymc_console-dist/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A real-time web dashboard for [MeshCore](https://meshcore.co.uk/) LoRa mesh repeaters.
+A real-time web dashboard for [MeshCore](https://meshcore.io/) LoRa mesh repeaters.
 
-pyMC Console gives you full visibility into your mesh network — packet flow, topology, signal quality, RF metrics, and radio configuration — through a single browser tab. It layers on top of [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) without modifying it.
+pyMC Console gives you full visibility into your mesh network — packet flow, topology, signal quality, RF metrics, and radio configuration — through a single browser tab. It layers on top of [pyMC_Repeater](https://github.com/pyMC-dev/pyMC_Repeater) without modifying it.
 
 ---
 
@@ -19,10 +19,10 @@ pyMC Console gives you full visibility into your mesh network — packet flow, t
 
 ### Prerequisite: pyMC_Repeater
 
-The Console dashboard plugs into an existing [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) install. If you don't already have it running, install it first using upstream's manage.sh:
+The Console dashboard plugs into an existing [pyMC_Repeater](https://github.com/pyMC-dev/pyMC_Repeater) install. If you don't already have it running, install it first using upstream's manage.sh:
 
 ```bash
-git clone https://github.com/rightup/pyMC_Repeater.git
+git clone https://github.com/pyMC-dev/pyMC_Repeater.git
 cd pyMC_Repeater
 sudo ./manage.sh install
 ```
@@ -428,8 +428,8 @@ MIT — See [LICENSE](LICENSE)
 Built on the work of:
 
 - **[RightUp](https://github.com/rightup)** — Creator of pyMC_Repeater, pymc_core, and the MeshCore Python ecosystem
-- **[pyMC_Repeater](https://github.com/rightup/pyMC_Repeater)** — Core repeater daemon
+- **[pyMC_Repeater](https://github.com/pyMC-dev/pyMC_Repeater)** — Core repeater daemon
 - **[pymc_core](https://github.com/rightup/pyMC_core)** — Protocol library
-- **[MeshCore](https://meshcore.co.uk/)** — The MeshCore project and community
+- **[MeshCore](https://meshcore.io/)** — The MeshCore project and community
 - **[d40cht/meshcore-connectivity-analysis](https://github.com/d40cht/meshcore-connectivity-analysis)** — Viterbi HMM approach for path disambiguation
 - **[meshcore-bot](https://github.com/agessaman/meshcore-bot)** — Recency scoring and dual-hop anchor disambiguation

@@ -4,7 +4,7 @@ This guide covers **manual** installation of the Console dashboard (without `man
 
 ## Prerequisite
 
-An existing [pyMC_Repeater](https://github.com/rightup/pyMC_Repeater) installation. The Console dashboard is served by pyMC_Repeater's CherryPy server; installing it on its own does nothing useful.
+An existing [pyMC_Repeater](https://github.com/pyMC-dev/pyMC_Repeater) installation. The Console dashboard is served by pyMC_Repeater's CherryPy server; installing it on its own does nothing useful.
 
 Verify Repeater is installed:
 

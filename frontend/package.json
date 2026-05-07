@@ -1,6 +1,6 @@
 {
   "name": "pymc_console",
-  "version": "0.9.327",
+  "version": "0.9.329",
   "description": "Vite + React Dashboard for pyMC_Repeater",
   "private": true,
   "type": "module",
@@ -34,7 +34,7 @@
     "lucide-react": "^0.559.0",
     "maplibre-gl": "^5.15.0",
     "motion": "^12.29.0",
-    "motion-plus": "https://api.motion.dev/registry.tgz?package=motion-plus&version=2.0.2&token=b7b46089a57861da4b663cb1b4813c1766437cf393b8e81189aea9ff73992d5b",
+    "motion-plus": "https://api.motion.dev/registry.tgz?package=motion-plus&version=2.0.2&token=45c97e233090c33ec938cc2d7e23d9a164a04a037a32bb5e4852d39463cba272",
     "mqtt": "^5.15.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
